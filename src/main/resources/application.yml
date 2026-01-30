@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: gold-price-alert
+
+server:
+  port: 80
+
+gold:
+  api-url: https://api.gold-api.com/price/XAU
+  fetch-interval: 20s
+  history-window: 1h
