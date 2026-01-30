@@ -1,12 +1,9 @@
 package com.xbleey.goldpricealert.service;
 
-import com.xbleey.goldpricealert.config.GoldProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xbleey.goldpricealert.config.GoldProperties;
 import com.xbleey.goldpricealert.model.GoldApiResponse;
 import com.xbleey.goldpricealert.model.GoldPriceSnapshot;
-import java.time.Clock;
-import java.time.Instant;
-import java.util.Optional;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -14,6 +11,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.util.Optional;
 
 @Service
 public class GoldPriceFetcher {

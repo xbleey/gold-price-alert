@@ -2,12 +2,13 @@ package com.xbleey.goldpricealert.service;
 
 import com.xbleey.goldpricealert.enums.GoldAlertLevel;
 import com.xbleey.goldpricealert.model.GoldPriceSnapshot;
-import java.time.Instant;
-import java.util.Locale;
-import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.Locale;
+import java.util.Optional;
 
 @Service
 public class GoldAlertEvaluator {
@@ -24,24 +25,22 @@ public class GoldAlertEvaluator {
         for (GoldAlertLevel level : GoldAlertLevel.values()) {
             Instant target = latest.fetchedAt().minus(level.getWindow());
             Optional<GoldPriceSnapshot> baseline = history.findSnapshotAtOrBefore(target);
-            if (baseline.isEmpty()) {
-                continue;
-            }
-            double baselinePrice = baseline.get().price();
-            if (baselinePrice <= 0.0) {
-                continue;
-            }
-            double changePercent = ((latest.price() - baselinePrice) / baselinePrice) * 100.0;
-            double absChange = Math.abs(changePercent);
-            if (absChange >= level.getThresholdPercent()) {
-                log.warn(
-                        "ALERT window={} threshold={}%, change={}%, price {} -> {}",
-                        level.getWindow(),
-                        formatPercent(level.getThresholdPercent()),
-                        formatPercent(changePercent),
-                        baselinePrice,
-                        latest.price()
-                );
+            if (baseline.isPresent()) {
+                double baselinePrice = baseline.get().price();
+                if (baselinePrice > 0.0) {
+                    double changePercent = ((latest.price() - baselinePrice) / baselinePrice) * 100.0;
+                    double absChange = Math.abs(changePercent);
+                    if (absChange >= level.getThresholdPercent() && log.isWarnEnabled()) {
+                        log.warn(
+                                "ALERT window={} threshold={}%, change={}%, price {} -> {}",
+                                level.getWindow(),
+                                formatPercent(level.getThresholdPercent()),
+                                formatPercent(changePercent),
+                                baselinePrice,
+                                latest.price()
+                        );
+                    }
+                }
             }
         }
     }

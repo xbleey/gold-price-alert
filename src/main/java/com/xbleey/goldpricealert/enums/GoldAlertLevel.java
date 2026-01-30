@@ -1,13 +1,16 @@
 package com.xbleey.goldpricealert.enums;
 
+import lombok.Getter;
+
 import java.time.Duration;
 
+@Getter
 public enum GoldAlertLevel {
-    INFO_LEVEL(Duration.ofMinutes(1), 0.05),
-    MINOR_LEVEL(Duration.ofMinutes(1), 0.10),
-    MODERATE_LEVEL(Duration.ofMinutes(5), 0.25),
-    MAJOR_LEVEL(Duration.ofMinutes(5), 0.50),
-    CRITICAL_LEVEL(Duration.ofMinutes(15), 1.00);
+    INFO_LEVEL(Duration.ofMinutes(1), 0.08),
+    MINOR_LEVEL(Duration.ofMinutes(5), 0.20),
+    MODERATE_LEVEL(Duration.ofMinutes(15), 0.45),
+    MAJOR_LEVEL(Duration.ofMinutes(60), 0.90),
+    CRITICAL_LEVEL(Duration.ofMinutes(60), 1.50);
 
     private final Duration window;
     private final double thresholdPercent;
@@ -17,11 +20,4 @@ public enum GoldAlertLevel {
         this.thresholdPercent = thresholdPercent;
     }
 
-    public Duration getWindow() {
-        return window;
-    }
-
-    public double getThresholdPercent() {
-        return thresholdPercent;
-    }
 }

@@ -10,7 +10,7 @@
     </parent>
     <groupId>com.xbleey</groupId>
     <artifactId>gold-price-alert</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>1.0.0</version>
     <name>gold-price-alert</name>
     <description>gold-price-alert</description>
     <url/>
