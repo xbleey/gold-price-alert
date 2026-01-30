@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
 @Service
@@ -71,8 +72,13 @@ public class GoldPriceFetcher {
                 Instant fetchedAt = Instant.now(clock);
                 GoldPriceSnapshot snapshot = new GoldPriceSnapshot(fetchedAt, response);
                 history.add(snapshot);
-                evaluator.evaluate(snapshot);
-                log.info("Fetched gold price: {} {}", response.price(), response.symbol());
+                boolean alerted = evaluator.evaluate(snapshot);
+                String updatedAtFormatted = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                        .withZone(clock.getZone())
+                        .format(response.updatedAt());
+                if (!alerted) {
+                    log.info("Fetched gold price: {} time:{}", response.price(), updatedAtFormatted);
+                }
                 return Optional.of(snapshot);
             }
         } catch (Exception ex) {
