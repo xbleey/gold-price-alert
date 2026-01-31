@@ -5,17 +5,16 @@ spring:
     import: optional:file:${GOLD_SECRET_CONFIG:/data/profiles/mail-secrets.yml}
   mail:
     host: smtp.126.com
-    port: 25
+    port: 465
     username: ${GOLD_MAIL_USERNAME:}
     password: ${GOLD_MAIL_PASSWORD:}
     protocol: smtp
     properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-            required: true
+      mail.smtp.ssl.enable: true
+      mail.smtp.auth: true
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
 
 server:
   port: 80
