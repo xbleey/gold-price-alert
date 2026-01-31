@@ -24,10 +24,12 @@ public class GoldAlertEvaluator {
 
     private final GoldPriceHistory history;
     private final Clock clock;
+    private final GoldAlertNotifier alertNotifier;
 
-    public GoldAlertEvaluator(GoldPriceHistory history, Clock clock) {
+    public GoldAlertEvaluator(GoldPriceHistory history, Clock clock, GoldAlertNotifier alertNotifier) {
         this.history = history;
         this.clock = clock;
+        this.alertNotifier = alertNotifier == null ? GoldAlertNotifier.noop() : alertNotifier;
     }
 
     public boolean evaluate(GoldPriceSnapshot latest) {
@@ -54,20 +56,25 @@ public class GoldAlertEvaluator {
                 }
             }
         }
-        if (bestCandidate != null && log.isWarnEnabled()) {
+        if (bestCandidate != null) {
             String alertTime = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
                     .withZone(clock.getZone())
                     .format(latest.fetchedAt());
-            log.warn(
-                    "ALERT!! level: {} | window={} threshold={}%, change={}%, price {} -> {} time={}",
-                    bestCandidate.level.getLevelName(),
+            String alertMessage = formatAlertMessage(bestCandidate, latest, alertTime);
+            if (log.isWarnEnabled()) {
+                log.warn(alertMessage);
+            }
+            alertNotifier.notifyAlert(new GoldAlertMessage(
+                    bestCandidate.level,
+                    alertMessage,
+                    latest.fetchedAt(),
                     bestCandidate.level.getWindow(),
-                    formatPercent(bestCandidate.level.getThresholdPercent()),
-                    formatPercent(bestCandidate.changePercent),
+                    bestCandidate.level.getThresholdPercent(),
+                    bestCandidate.changePercent,
                     bestCandidate.baselinePrice,
                     latest.price(),
-                    alertTime
-            );
+                    history.getRecent(10)
+            ));
             return true;
         }
         return false;
@@ -75,6 +82,15 @@ public class GoldAlertEvaluator {
 
     private String formatPercent(BigDecimal value) {
         return value.setScale(4, RoundingMode.HALF_UP).toPlainString();
+    }
+
+    private String formatAlertMessage(AlertCandidate candidate, GoldPriceSnapshot latest, String alertTime) {
+        return "WARNING!!WARNING!!WARNING!! level: " + candidate.level.getLevelName()
+                + " | window=" + candidate.level.getWindow()
+                + " threshold=" + formatPercent(candidate.level.getThresholdPercent()) + "%, change="
+                + formatPercent(candidate.changePercent) + "%, price "
+                + candidate.baselinePrice + " -> " + latest.price()
+                + " time=" + alertTime;
     }
 
     private static final class AlertCandidate {

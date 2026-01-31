@@ -20,7 +20,7 @@ class GoldAlertEvaluatorTest {
         Instant now = Instant.parse("2026-01-05T12:00:00Z");
         Clock clock = Clock.fixed(now, ZoneOffset.UTC);
         GoldPriceHistory history = new GoldPriceHistory(properties(Duration.ofMinutes(120), 100));
-        GoldAlertEvaluator evaluator = new GoldAlertEvaluator(history, clock);
+        GoldAlertEvaluator evaluator = new GoldAlertEvaluator(history, clock, GoldAlertNotifier.noop());
 
         history.add(snapshot(now.minus(Duration.ofMinutes(2)), "100.00"));
 
@@ -34,7 +34,7 @@ class GoldAlertEvaluatorTest {
         Instant now = Instant.parse("2026-01-05T12:00:00Z");
         Clock clock = Clock.fixed(now, ZoneOffset.UTC);
         GoldPriceHistory history = new GoldPriceHistory(properties(Duration.ofMinutes(120), 100));
-        GoldAlertEvaluator evaluator = new GoldAlertEvaluator(history, clock);
+        GoldAlertEvaluator evaluator = new GoldAlertEvaluator(history, clock, GoldAlertNotifier.noop());
 
         GoldPriceSnapshot latest = snapshot(now, "101.00");
 

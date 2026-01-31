@@ -86,7 +86,7 @@ class GoldPriceFetcherTest {
         properties.setHistoryCapacity(100);
 
         GoldPriceHistory history = new GoldPriceHistory(properties);
-        GoldAlertEvaluator evaluator = new GoldAlertEvaluator(history, clock);
+        GoldAlertEvaluator evaluator = new GoldAlertEvaluator(history, clock, GoldAlertNotifier.noop());
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
         GoldPriceFetcher fetcher = new GoldPriceFetcher(

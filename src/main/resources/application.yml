@@ -1,6 +1,21 @@
 spring:
   application:
     name: gold-price-alert
+  config:
+    import: optional:file:${GOLD_SECRET_CONFIG:/data/profiles/mail-secrets.yml}
+  mail:
+    host: smtp.126.com
+    port: 25
+    username: ${GOLD_MAIL_USERNAME:}
+    password: ${GOLD_MAIL_PASSWORD:}
+    protocol: smtp
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
 
 server:
   port: 80
@@ -10,3 +25,7 @@ gold:
   fetch-interval: 1m
   history-window: 1h
   history-capacity: 2000
+  alert:
+    mail:
+      sender: ${GOLD_MAIL_SENDER:}
+      recipients: ${GOLD_MAIL_RECIPIENTS:}
