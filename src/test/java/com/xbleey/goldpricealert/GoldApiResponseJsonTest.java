@@ -25,7 +25,7 @@ class GoldApiResponseJsonTest {
         GoldApiResponse response = mapper.readValue(json, GoldApiResponse.class);
 
         Assertions.assertEquals("Gold", response.name());
-        Assertions.assertEquals(5095.0, response.price(), 0.0001);
+        Assertions.assertEquals(5095.0, response.price().doubleValue(), 0.0001);
         Assertions.assertEquals("XAU", response.symbol());
         Assertions.assertNotNull(response.updatedAt());
         Assertions.assertEquals("a few seconds ago", response.updatedAtReadable());

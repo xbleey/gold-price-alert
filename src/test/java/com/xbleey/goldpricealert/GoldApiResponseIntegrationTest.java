@@ -21,7 +21,7 @@ class GoldApiResponseIntegrationTest {
         Assertions.assertNotNull(response.name(), "name should not be null");
         Assertions.assertFalse(response.name().isBlank(), "name should not be blank");
         Assertions.assertEquals("XAU", response.symbol(), "symbol should be XAU");
-        Assertions.assertTrue(response.price() > 0.0, "price should be positive");
+        Assertions.assertTrue(response.price().doubleValue() > 0.0, "price should be positive");
         Assertions.assertNotNull(response.updatedAt(), "updatedAt should not be null");
         Assertions.assertNotNull(response.updatedAtReadable(), "updatedAtReadable should not be null");
     }

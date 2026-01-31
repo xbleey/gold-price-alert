@@ -22,7 +22,7 @@
 ```yaml
 gold:
   api-url: https://api.gold-api.com/price/XAU
-  fetch-interval: 20s
+  fetch-interval: 1m
   history-window: 1h
 ```
 

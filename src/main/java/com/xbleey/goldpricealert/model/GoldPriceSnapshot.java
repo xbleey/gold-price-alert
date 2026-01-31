@@ -1,10 +1,11 @@
 package com.xbleey.goldpricealert.model;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 public record GoldPriceSnapshot(Instant fetchedAt, GoldApiResponse response) {
 
-    public double price() {
-        return response == null ? 0.0 : response.price();
+    public BigDecimal price() {
+        return response == null || response.price() == null ? BigDecimal.ZERO : response.price();
     }
 }

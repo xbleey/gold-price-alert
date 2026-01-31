@@ -6,16 +6,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.math.MathContext;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
-import java.util.Locale;
 import java.util.Optional;
 
 @Service
 public class GoldAlertEvaluator {
 
     private static final Logger log = LoggerFactory.getLogger(GoldAlertEvaluator.class);
+    private static final MathContext MATH_CONTEXT = new MathContext(12, RoundingMode.HALF_UP);
+    private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100);
+    private static final BigDecimal ZERO = BigDecimal.ZERO;
 
     private final GoldPriceHistory history;
     private final Clock clock;
@@ -31,14 +36,20 @@ public class GoldAlertEvaluator {
             Instant target = latest.fetchedAt().minus(level.getWindow());
             Optional<GoldPriceSnapshot> baseline = history.findSnapshotAtOrBefore(target);
             if (baseline.isPresent()) {
-                double baselinePrice = baseline.get().price();
-                if (baselinePrice > 0.0) {
-                    double changePercent = ((latest.price() - baselinePrice) / baselinePrice) * 100.0;
-                    double absChange = Math.abs(changePercent);
-                    if (absChange >= level.getThresholdPercent()) {
-                        if (bestCandidate == null || absChange > bestCandidate.absChangePercent) {
-                            bestCandidate = new AlertCandidate(level, baselinePrice, changePercent, absChange);
-                        }
+                BigDecimal baselinePrice = baseline.get().price();
+                if (baselinePrice.compareTo(ZERO) <= 0) {
+                    continue;
+                }
+                BigDecimal latestPrice = latest.price();
+                BigDecimal changePercent = latestPrice
+                        .subtract(baselinePrice, MATH_CONTEXT)
+                        .divide(baselinePrice, MATH_CONTEXT)
+                        .multiply(ONE_HUNDRED, MATH_CONTEXT);
+                BigDecimal absChange = changePercent.abs();
+                BigDecimal threshold = level.getThresholdPercent();
+                if (absChange.compareTo(threshold) >= 0) {
+                    if (bestCandidate == null || absChange.compareTo(bestCandidate.absChangePercent) > 0) {
+                        bestCandidate = new AlertCandidate(level, baselinePrice, changePercent, absChange);
                     }
                 }
             }
@@ -62,21 +73,21 @@ public class GoldAlertEvaluator {
         return false;
     }
 
-    private String formatPercent(double value) {
-        return String.format(Locale.US, "%.4f", value);
+    private String formatPercent(BigDecimal value) {
+        return value.setScale(4, RoundingMode.HALF_UP).toPlainString();
     }
 
     private static final class AlertCandidate {
         private final GoldAlertLevel level;
-        private final double baselinePrice;
-        private final double changePercent;
-        private final double absChangePercent;
+        private final BigDecimal baselinePrice;
+        private final BigDecimal changePercent;
+        private final BigDecimal absChangePercent;
 
         private AlertCandidate(
                 GoldAlertLevel level,
-                double baselinePrice,
-                double changePercent,
-                double absChangePercent
+                BigDecimal baselinePrice,
+                BigDecimal changePercent,
+                BigDecimal absChangePercent
         ) {
             this.level = level;
             this.baselinePrice = baselinePrice;
