@@ -4,8 +4,8 @@
     <springProperty scope="context" name="logDir" source="gold.log-dir" defaultValue="/data/gold-price-alert/logs"/>
 
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder class="co.elastic.logging.logback.EcsEncoder">
-            <serviceName>${appName}</serviceName>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %5p ${PID:- } --- [%t] %-40.40logger{39} : %m%n%ex</pattern>
         </encoder>
     </appender>
 
