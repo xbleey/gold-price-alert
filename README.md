@@ -24,10 +24,12 @@ gold:
   api-url: https://api.gold-api.com/price/XAU
   fetch-interval: 1m
   history-window: 1h
+  log-dir: ${GOLD_LOG_DIR:/data/gold-price-alert/logs}
 ```
 
 - `fetch-interval`: 拉取频率（当前为 1m）。
 - `history-window`: 历史记录保留窗口（当前为 1h）。
+- `log-dir`: 日志目录，默认 `/data/gold-price-alert/logs`，可通过环境变量 `GOLD_LOG_DIR` 覆盖。
 
 ## 运行方式
 - 直接运行 Spring Boot 应用即可（默认端口 80）。

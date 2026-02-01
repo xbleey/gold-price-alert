@@ -24,6 +24,7 @@ gold:
   fetch-interval: 1m
   history-window: 1h
   history-capacity: 2000
+  log-dir: ${GOLD_LOG_DIR:/app/logs}
   alert:
     mail:
       sender: ${GOLD_MAIL_SENDER:}
