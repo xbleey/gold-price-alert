@@ -22,7 +22,7 @@ public class FetchPriceController {
         this.history = history;
     }
 
-    @GetMapping("/pirce")
+    @GetMapping("/price")
     public Map<String, Object> triggerFetch() {
         Optional<GoldPriceSnapshot> snapshot = fetcher.fetchOnce();
         if (snapshot.isEmpty()) {

@@ -1,6 +1,20 @@
 spring:
   application:
     name: gold-price-alert
+  config:
+    import: optional:file:${GOLD_SECRET_CONFIG:/data/profiles/mail-secrets.yml}
+  mail:
+    host: smtp.126.com
+    port: 465
+    username: ${GOLD_MAIL_USERNAME:}
+    password: ${GOLD_MAIL_PASSWORD:}
+    protocol: smtp
+    properties:
+      mail.smtp.ssl.enable: true
+      mail.smtp.auth: true
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
 
 server:
   port: 80
@@ -10,3 +24,15 @@ gold:
   fetch-interval: 1m
   history-window: 1h
   history-capacity: 2000
+  log-dir: ${GOLD_LOG_DIR:/app/logs}
+  alert:
+    mail:
+      sender: ${GOLD_MAIL_SENDER:}
+      recipients: ${GOLD_MAIL_RECIPIENTS:}
+      min-level: ${GOLD_MAIL_MIN_LEVEL:MINOR_LEVEL}
+      cooldowns:
+        INFO_LEVEL: ${GOLD_MAIL_COOLDOWN_INFO:30m}
+        MINOR_LEVEL: ${GOLD_MAIL_COOLDOWN_MINOR:15m}
+        MODERATE_LEVEL: ${GOLD_MAIL_COOLDOWN_MODERATE:10m}
+        MAJOR_LEVEL: ${GOLD_MAIL_COOLDOWN_MAJOR:5m}
+        CRITICAL_LEVEL: ${GOLD_MAIL_COOLDOWN_CRITICAL:0m}
