@@ -1,6 +1,7 @@
 package com.xbleey.goldpricealert.service;
 
 import com.xbleey.goldpricealert.config.GoldAlertMailProperties;
+import com.xbleey.goldpricealert.enums.GoldAlertLevel;
 import com.xbleey.goldpricealert.model.GoldApiResponse;
 import com.xbleey.goldpricealert.model.GoldPriceSnapshot;
 import jakarta.mail.internet.MimeMessage;
@@ -18,7 +19,6 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 @Service
 public class GoldAlertEmailService implements GoldAlertNotifier {
@@ -42,6 +42,9 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         if (message == null) {
             return;
         }
+        if (!shouldSend(message.level())) {
+            return;
+        }
         String sender = normalize(properties.getSender());
         List<String> recipients = normalizeRecipients(properties.getRecipients());
         if (sender == null) {
@@ -63,6 +66,17 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         } catch (Exception ex) {
             log.warn("Failed to send alert email", ex);
         }
+    }
+
+    private boolean shouldSend(GoldAlertLevel level) {
+        if (level == null) {
+            return false;
+        }
+        GoldAlertLevel minLevel = properties.getMinLevel();
+        if (minLevel == null) {
+            return true;
+        }
+        return level.ordinal() >= minLevel.ordinal();
     }
 
     public String previewHtml(GoldAlertMessage message) {
@@ -274,7 +288,7 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 .filter(Objects::nonNull)
                 .map(String::trim)
                 .filter(value -> !value.isEmpty())
-                .collect(Collectors.toList());
+                .toList();
     }
 
 }

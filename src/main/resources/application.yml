@@ -28,3 +28,4 @@ gold:
     mail:
       sender: ${GOLD_MAIL_SENDER:}
       recipients: ${GOLD_MAIL_RECIPIENTS:}
+      min-level: ${GOLD_MAIL_MIN_LEVEL:MINOR_LEVEL}
