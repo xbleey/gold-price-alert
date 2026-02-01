@@ -1,8 +1,8 @@
 package com.xbleey.goldpricealert.service;
 
-import com.xbleey.goldpricealert.config.GoldProperties;
 import com.xbleey.goldpricealert.model.GoldApiResponse;
 import com.xbleey.goldpricealert.model.GoldPriceSnapshot;
+import com.xbleey.goldpricealert.support.InMemoryGoldPriceSnapshotStore;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -19,7 +19,7 @@ class GoldAlertEvaluatorTest {
     void returnsTrueWhenChangeExceedsThreshold() {
         Instant now = Instant.parse("2026-01-05T12:00:00Z");
         Clock clock = Clock.fixed(now, ZoneOffset.UTC);
-        GoldPriceHistory history = new GoldPriceHistory(properties(Duration.ofMinutes(120), 100));
+        GoldPriceHistory history = new GoldPriceHistory(new InMemoryGoldPriceSnapshotStore());
         GoldAlertEvaluator evaluator = new GoldAlertEvaluator(history, clock, GoldAlertNotifier.noop());
 
         history.add(snapshot(now.minus(Duration.ofMinutes(2)), "100.00"));
@@ -33,7 +33,7 @@ class GoldAlertEvaluatorTest {
     void returnsFalseWhenNoBaselineExists() {
         Instant now = Instant.parse("2026-01-05T12:00:00Z");
         Clock clock = Clock.fixed(now, ZoneOffset.UTC);
-        GoldPriceHistory history = new GoldPriceHistory(properties(Duration.ofMinutes(120), 100));
+        GoldPriceHistory history = new GoldPriceHistory(new InMemoryGoldPriceSnapshotStore());
         GoldAlertEvaluator evaluator = new GoldAlertEvaluator(history, clock, GoldAlertNotifier.noop());
 
         GoldPriceSnapshot latest = snapshot(now, "101.00");
@@ -52,10 +52,4 @@ class GoldAlertEvaluatorTest {
         return new GoldPriceSnapshot(time, response);
     }
 
-    private static GoldProperties properties(Duration window, int capacity) {
-        GoldProperties properties = new GoldProperties();
-        properties.setHistoryWindow(window);
-        properties.setHistoryCapacity(capacity);
-        return properties;
-    }
 }

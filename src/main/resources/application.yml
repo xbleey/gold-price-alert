@@ -3,6 +3,11 @@ spring:
     name: gold-price-alert
   config:
     import: optional:file:${GOLD_SECRET_CONFIG:/data/profiles/mail-secrets.yml}
+  datasource:
+    url: jdbc:mysql://${GOLD_DB_HOST:10.140.0.2}:${GOLD_DB_PORT:3306}/${GOLD_DB_NAME:alert}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: ${GOLD_DB_USERNAME:root}
+    password: ${GOLD_DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
   mail:
     host: smtp.126.com
     port: 465
@@ -16,14 +21,16 @@ spring:
       mail.smtp.timeout: 5000
       mail.smtp.writetimeout: 5000
 
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
 server:
   port: 80
 
 gold:
   api-url: https://api.gold-api.com/price/XAU
   fetch-interval: 1m
-  history-window: 1h
-  history-capacity: 2000
   log-dir: ${GOLD_LOG_DIR:/app/logs}
   alert:
     mail:

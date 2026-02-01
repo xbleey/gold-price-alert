@@ -3,7 +3,7 @@
 一个基于 Spring Boot 的金价监控小服务，定时从 gold-api.com 拉取最新金价，并按波动幅度触发告警与邮件通知。
 
 ## 核心流程
-1. 按 `fetch-interval` 拉取最新价格并入库（内存历史队列）。
+1. 按 `fetch-interval` 拉取最新价格并入库（MySQL，永久存储）。
 2. 对每个告警等级，取“该等级窗口对应时间点”之前的最近快照作为基准价。
 3. 计算涨跌幅（百分比），取绝对值与阈值比较。
 4. 若多个等级同时满足，选择“绝对涨跌幅最大”的等级作为本次告警。
@@ -38,11 +38,19 @@
 核心配置在 `src/main/resources/application.yml`：
 
 ```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://${GOLD_DB_HOST:10.140.0.2}:${GOLD_DB_PORT:3306}/${GOLD_DB_NAME:alert}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: ${GOLD_DB_USERNAME:root}
+    password: ${GOLD_DB_PASSWORD:}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
 gold:
   api-url: https://api.gold-api.com/price/XAU
   fetch-interval: 1m
-  history-window: 1h
-  history-capacity: 2000
   log-dir: ${GOLD_LOG_DIR:/app/logs}
   alert:
     mail:
@@ -58,7 +66,6 @@ gold:
 ```
 
 说明：
-- `history-window` 建议不小于最大告警窗口（当前为 60m）。
 - `gold.alert.mail.cooldowns.<LEVEL>` 必须为所有等级配置，否则启动报错。
 - 冷却时间支持 `0m`，表示不限制频率。
 
