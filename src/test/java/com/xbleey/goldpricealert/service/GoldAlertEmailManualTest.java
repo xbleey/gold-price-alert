@@ -25,11 +25,11 @@ class GoldAlertEmailManualTest {
         Instant now = Instant.now();
         GoldAlertMessage message = new GoldAlertMessage(
                 GoldAlertLevel.MAJOR_LEVEL,
-                "ALERT!! level: P4 | window=PT1H threshold=0.9000%, change=1.0500%, price 1900.00 -> 1920.00 time="
+                "ALERT!! level: P4 | window=PT1H threshold=1.0000%, change=1.0500%, price 1900.00 -> 1920.00 time="
                         + now,
                 now,
                 java.time.Duration.ofHours(1),
-                new BigDecimal("0.9000"),
+                new BigDecimal("1.0000"),
                 new BigDecimal("1.0500"),
                 new BigDecimal("1900.00"),
                 new BigDecimal("1920.00"),

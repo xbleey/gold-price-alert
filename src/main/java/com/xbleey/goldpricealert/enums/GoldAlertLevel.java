@@ -7,11 +7,11 @@ import java.time.Duration;
 
 @Getter
 public enum GoldAlertLevel {
-    INFO_LEVEL(Duration.ofMinutes(1), new BigDecimal("0.08"), "P1"),
-    MINOR_LEVEL(Duration.ofMinutes(5), new BigDecimal("0.20"), "P2"),
-    MODERATE_LEVEL(Duration.ofMinutes(15), new BigDecimal("0.45"), "P3"),
-    MAJOR_LEVEL(Duration.ofMinutes(60), new BigDecimal("0.90"), "P4"),
-    CRITICAL_LEVEL(Duration.ofMinutes(60), new BigDecimal("1.50"), "P5");
+    INFO_LEVEL(Duration.ofMinutes(1), new BigDecimal("0.10"), "P1"),
+    MINOR_LEVEL(Duration.ofMinutes(5), new BigDecimal("0.30"), "P2"),
+    MODERATE_LEVEL(Duration.ofMinutes(15), new BigDecimal("0.60"), "P3"),
+    MAJOR_LEVEL(Duration.ofMinutes(60), new BigDecimal("1.00"), "P4"),
+    CRITICAL_LEVEL(Duration.ofMinutes(60), new BigDecimal("1.60"), "P5");
 
     private final Duration window;
     private final BigDecimal thresholdPercent;

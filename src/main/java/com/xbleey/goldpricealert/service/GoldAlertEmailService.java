@@ -14,10 +14,13 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @Service
@@ -30,6 +33,10 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
     private final JavaMailSender mailSender;
     private final GoldAlertMailProperties properties;
     private final Clock clock;
+    private final Object sendLock = new Object();
+    private final Map<GoldAlertLevel, Instant> lastSentAtByLevel = new EnumMap<>(GoldAlertLevel.class);
+    private Instant lastSentAt;
+    private GoldAlertLevel lastSentLevel;
 
     public GoldAlertEmailService(JavaMailSender mailSender, GoldAlertMailProperties properties, Clock clock) {
         this.mailSender = mailSender;
@@ -42,7 +49,7 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         if (message == null) {
             return;
         }
-        if (!shouldSend(message.level())) {
+        if (!shouldSend(message)) {
             return;
         }
         String sender = normalize(properties.getSender());
@@ -68,15 +75,51 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         }
     }
 
-    private boolean shouldSend(GoldAlertLevel level) {
-        if (level == null) {
+    private boolean shouldSend(GoldAlertMessage message) {
+        if (message == null || message.level() == null) {
             return false;
         }
         GoldAlertLevel minLevel = properties.getMinLevel();
         if (minLevel == null) {
-            return true;
+            return canSendWithCooldown(message);
         }
-        return level.ordinal() >= minLevel.ordinal();
+        if (message.level().ordinal() < minLevel.ordinal()) {
+            return false;
+        }
+        return canSendWithCooldown(message);
+    }
+
+    private boolean canSendWithCooldown(GoldAlertMessage message) {
+        Instant now = message.alertTime() == null ? Instant.now(clock) : message.alertTime();
+        synchronized (sendLock) {
+            boolean isLevelUp = lastSentLevel == null
+                    || message.level().ordinal() > lastSentLevel.ordinal();
+            if (isLevelUp || lastSentAt == null) {
+                recordSent(message.level(), now);
+                return true;
+            }
+            Duration cooldown = properties.cooldownFor(message.level());
+            if (cooldown == null || cooldown.isZero() || cooldown.isNegative()) {
+                recordSent(message.level(), now);
+                return true;
+            }
+            Instant lastAtForLevel = lastSentAtByLevel.get(message.level());
+            Instant baseline = lastAtForLevel == null ? lastSentAt : lastAtForLevel;
+            Duration elapsed = Duration.between(baseline, now);
+            if (elapsed.compareTo(cooldown) >= 0) {
+                recordSent(message.level(), now);
+                return true;
+            }
+            return false;
+        }
+    }
+
+    private void recordSent(GoldAlertLevel level, Instant now) {
+        lastSentAt = now;
+        lastSentLevel = level;
+        if (level != null) {
+            lastSentAtByLevel.put(level, now);
+        }
     }
 
     public String previewHtml(GoldAlertMessage message) {

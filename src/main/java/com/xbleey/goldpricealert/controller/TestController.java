@@ -40,11 +40,11 @@ public class TestController {
         }
         GoldAlertMessage message = new GoldAlertMessage(
                 GoldAlertLevel.MAJOR_LEVEL,
-                "WARNING!!WARNING!!WARNING!! level: P4 | window=PT1H threshold=0.9000%, change=1.0500%, price 1900.00 -> 1920.00 time="
+                "WARNING!!WARNING!!WARNING!! level: P4 | window=PT1H threshold=1.0000%, change=1.0500%, price 1900.00 -> 1920.00 time="
                         + now,
                 now,
                 Duration.ofHours(1),
-                new BigDecimal("0.9000"),
+                new BigDecimal("1.0000"),
                 new BigDecimal("1.0500"),
                 new BigDecimal("1900.00"),
                 new BigDecimal("1920.00"),
