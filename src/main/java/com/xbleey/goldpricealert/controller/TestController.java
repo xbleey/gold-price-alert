@@ -43,8 +43,8 @@ public class TestController {
         if (snapshots.isEmpty()) {
             return "No snapshots found in database. Fetch prices first.";
         }
-        GoldPriceSnapshot baseline = snapshots.get(0);
-        GoldPriceSnapshot latest = snapshots.get(snapshots.size() - 1);
+        GoldPriceSnapshot baseline = snapshots.getFirst();
+        GoldPriceSnapshot latest = snapshots.getLast();
         BigDecimal baselinePrice = baseline.price();
         BigDecimal latestPrice = latest.price();
         BigDecimal changePercent = computeChangePercent(baselinePrice, latestPrice);
