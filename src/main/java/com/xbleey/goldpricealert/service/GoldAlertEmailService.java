@@ -130,7 +130,21 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
     }
 
     private String buildSubject(GoldAlertMessage message) {
-        return "Gold Price Alert - " + message.level().getLevelName();
+        return "Gold Price Alert " + resolveDirectionTag(message) + " - " + message.level().getLevelName();
+    }
+
+    private String resolveDirectionTag(GoldAlertMessage message) {
+        if (message == null || message.changePercent() == null) {
+            return "[?]";
+        }
+        int sign = message.changePercent().signum();
+        if (sign > 0) {
+            return "[↑]";
+        }
+        if (sign < 0) {
+            return "[↓]";
+        }
+        return "[?]";
     }
 
     private String buildPlainText(GoldAlertMessage message) {
