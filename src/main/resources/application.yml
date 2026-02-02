@@ -20,12 +20,13 @@ spring:
       mail.smtp.connectiontimeout: 5000
       mail.smtp.timeout: 5000
       mail.smtp.writetimeout: 5000
-  redis:
-    host: ${GOLD_REDIS_HOST:10.140.0.2}
-    port: ${GOLD_REDIS_PORT:6379}
-    password: ${GOLD_REDIS_PASSWORD:}
-    database: ${GOLD_REDIS_DATABASE:0}
-    timeout: ${GOLD_REDIS_TIMEOUT:5s}
+  data:
+    redis:
+      host: ${GOLD_REDIS_HOST:10.140.0.2}
+      port: ${GOLD_REDIS_PORT:6379}
+      password: ${GOLD_REDIS_PASSWORD:}
+      database: ${GOLD_REDIS_DATABASE:0}
+      timeout: ${GOLD_REDIS_TIMEOUT:5s}
 
 mybatis-plus:
   configuration:
