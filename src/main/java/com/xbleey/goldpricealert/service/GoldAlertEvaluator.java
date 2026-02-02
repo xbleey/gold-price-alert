@@ -50,8 +50,13 @@ public class GoldAlertEvaluator {
                 BigDecimal absChange = changePercent.abs();
                 BigDecimal threshold = level.getThresholdPercent();
                 if (absChange.compareTo(threshold) >= 0) {
-                    if (bestCandidate == null || absChange.compareTo(bestCandidate.absChangePercent) > 0) {
+                    if (bestCandidate == null) {
                         bestCandidate = new AlertCandidate(level, baselinePrice, changePercent, absChange);
+                    } else {
+                        int absCompare = absChange.compareTo(bestCandidate.absChangePercent);
+                        if (absCompare > 0 || (absCompare == 0 && level.ordinal() > bestCandidate.level.ordinal())) {
+                            bestCandidate = new AlertCandidate(level, baselinePrice, changePercent, absChange);
+                        }
                     }
                 }
             }
