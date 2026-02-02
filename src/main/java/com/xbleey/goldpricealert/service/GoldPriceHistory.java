@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,6 +41,7 @@ public class GoldPriceHistory {
             return List.of();
         }
         List<GoldPriceSnapshot> ordered = new ArrayList<>(recent);
-        return List.copyOf(ordered.reversed());
+        ordered.sort(Comparator.comparing(GoldPriceSnapshot::getFetchedAt));
+        return List.copyOf(ordered);
     }
 }
