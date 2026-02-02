@@ -42,7 +42,7 @@ class GoldPriceHistoryTest {
         history.add(s2);
         history.add(s3);
 
-        assertThat(history.getRecent(2)).containsExactly(s2, s3);
+        assertThat(history.getRecent(2)).containsExactly(s3, s2);
     }
 
     @Test

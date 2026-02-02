@@ -41,7 +41,7 @@ public class GoldPriceHistory {
             return List.of();
         }
         List<GoldPriceSnapshot> ordered = new ArrayList<>(recent);
-        ordered.sort(Comparator.comparing(GoldPriceSnapshot::getFetchedAt));
+        ordered.sort(Comparator.comparing(GoldPriceSnapshot::getFetchedAt).reversed());
         return List.copyOf(ordered);
     }
 }
