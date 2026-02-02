@@ -52,27 +52,22 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         if (!shouldSend(message)) {
             return;
         }
-        String sender = normalize(properties.getSender());
-        List<String> recipients = normalizeRecipients(properties.getRecipients());
-        if (sender == null) {
-            log.warn("Skip alert email: sender not configured");
+        EmailTargets targets = resolveEmailTargets();
+        if (targets == null) {
             return;
         }
-        if (recipients.isEmpty()) {
-            log.debug("Skip alert email: recipients not configured");
+        sendEmail(targets, buildSubject(message), buildPlainText(message), buildHtmlBody(message));
+    }
+
+    public void notifyThresholdAlert(GoldThresholdAlertMessage message) {
+        if (message == null) {
             return;
         }
-        try {
-            MimeMessage mimeMessage = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, StandardCharsets.UTF_8.name());
-            helper.setFrom(sender);
-            helper.setTo(recipients.toArray(new String[0]));
-            helper.setSubject(buildSubject(message));
-            helper.setText(buildPlainText(message), buildHtmlBody(message));
-            mailSender.send(mimeMessage);
-        } catch (Exception ex) {
-            log.warn("Failed to send alert email", ex);
+        EmailTargets targets = resolveEmailTargets();
+        if (targets == null) {
+            return;
         }
+        sendEmail(targets, buildThresholdSubject(message), buildThresholdPlainText(message), buildThresholdHtmlBody(message));
     }
 
     private boolean shouldSend(GoldAlertMessage message) {
@@ -129,8 +124,41 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         return buildHtmlBody(message);
     }
 
+    private EmailTargets resolveEmailTargets() {
+        String sender = normalize(properties.getSender());
+        List<String> recipients = normalizeRecipients(properties.getRecipients());
+        if (sender == null) {
+            log.warn("Skip alert email: sender not configured");
+            return null;
+        }
+        if (recipients.isEmpty()) {
+            log.debug("Skip alert email: recipients not configured");
+            return null;
+        }
+        return new EmailTargets(sender, recipients);
+    }
+
+    private void sendEmail(EmailTargets targets, String subject, String plainText, String htmlBody) {
+        try {
+            MimeMessage mimeMessage = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, StandardCharsets.UTF_8.name());
+            helper.setFrom(targets.sender());
+            helper.setTo(targets.recipients().toArray(new String[0]));
+            helper.setSubject(subject);
+            helper.setText(plainText, htmlBody);
+            mailSender.send(mimeMessage);
+        } catch (Exception ex) {
+            log.warn("Failed to send alert email", ex);
+        }
+    }
+
     private String buildSubject(GoldAlertMessage message) {
         return "Gold Price Alert " + resolveDirectionTag(message) + " - " + message.level().getLevelName();
+    }
+
+    private String buildThresholdSubject(GoldThresholdAlertMessage message) {
+        String direction = resolveThresholdDirection(message);
+        return "Gold Price Alert " + direction + " " + formatPrice(message == null ? null : message.threshold());
     }
 
     private String resolveDirectionTag(GoldAlertMessage message) {
@@ -145,6 +173,13 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
             return "[↓]";
         }
         return "[?]";
+    }
+
+    private String resolveThresholdDirection(GoldThresholdAlertMessage message) {
+        if (message == null || message.direction() == null) {
+            return "UNKNOWN";
+        }
+        return message.direction().subjectTag();
     }
 
     private String buildPlainText(GoldAlertMessage message) {
@@ -173,6 +208,26 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 .append(")")
                 .append('\n');
         appendPlainTextTable(builder, message.recentSnapshots(), zone, updatedAtZone);
+        return builder.toString();
+    }
+
+    private String buildThresholdPlainText(GoldThresholdAlertMessage message) {
+        StringBuilder builder = new StringBuilder();
+        ZoneId zone = clock.getZone();
+        ZoneId updatedAtZone = ZoneId.of("UTC+08:00");
+        builder.append("Gold Price Threshold Alert").append('\n');
+        builder.append("direction=").append(formatThresholdDirection(message)).append('\n');
+        builder.append("price=").append(formatPrice(message == null ? null : message.price())).append('\n');
+        builder.append("time=").append(formatInstant(message == null ? null : message.alertTime(), zone)).append('\n');
+        builder.append("time (UTC+8)=")
+                .append(formatInstant(message == null ? null : message.alertTime(), ZoneId.of("UTC+08:00")))
+                .append('\n')
+                .append('\n');
+        builder.append("Recent GoldPriceSnapshot (last ")
+                .append(message == null || message.recentSnapshots() == null ? 0 : message.recentSnapshots().size())
+                .append(")")
+                .append('\n');
+        appendPlainTextTable(builder, message == null ? null : message.recentSnapshots(), zone, updatedAtZone);
         return builder.toString();
     }
 
@@ -209,6 +264,32 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 .append(message.recentSnapshots() == null ? 0 : message.recentSnapshots().size())
                 .append(")</h3>");
         appendHtmlTable(builder, message.recentSnapshots(), zone, updatedAtZone);
+        builder.append("</body></html>");
+        return builder.toString();
+    }
+
+    private String buildThresholdHtmlBody(GoldThresholdAlertMessage message) {
+        StringBuilder builder = new StringBuilder();
+        ZoneId zone = clock.getZone();
+        ZoneId updatedAtZone = ZoneId.of("UTC+08:00");
+        builder.append("<html><body>");
+        builder.append("<h2>Gold Price Threshold Alert</h2>");
+        builder.append("<h3>direction=")
+                .append(escapeHtml(formatThresholdDirection(message)))
+                .append("</h3>");
+        builder.append("<h3>price=")
+                .append(escapeHtml(formatPrice(message == null ? null : message.price())))
+                .append("</h3>");
+        builder.append("<h3>time=")
+                .append(escapeHtml(formatInstant(message == null ? null : message.alertTime(), zone)))
+                .append("</h3>");
+        builder.append("<h3>time (UTC+8)=")
+                .append(escapeHtml(formatInstant(message == null ? null : message.alertTime(), ZoneId.of("UTC+08:00"))))
+                .append("</h3>");
+        builder.append("<h3>Recent GoldPriceSnapshot (last ")
+                .append(message == null || message.recentSnapshots() == null ? 0 : message.recentSnapshots().size())
+                .append(")</h3>");
+        appendHtmlTable(builder, message == null ? null : message.recentSnapshots(), zone, updatedAtZone);
         builder.append("</body></html>");
         return builder.toString();
     }
@@ -304,6 +385,14 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         return price == null ? "-" : price.toPlainString();
     }
 
+    private String formatThresholdDirection(GoldThresholdAlertMessage message) {
+        if (message == null) {
+            return "UNKNOWN";
+        }
+        String direction = resolveThresholdDirection(message);
+        return direction + " " + formatPrice(message.threshold());
+    }
+
     private String safeValue(String value) {
         return value == null || value.isBlank() ? "-" : value;
     }
@@ -346,6 +435,9 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 .map(String::trim)
                 .filter(value -> !value.isEmpty())
                 .toList();
+    }
+
+    private record EmailTargets(String sender, List<String> recipients) {
     }
 
 }

@@ -94,6 +94,7 @@ class GoldPriceFetcherTest {
                 properties,
                 history,
                 evaluator,
+                null,
                 clock
         );
         return new FetcherFixture(fetcher, history);
