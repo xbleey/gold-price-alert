@@ -14,6 +14,4 @@ public class GoldProperties {
 
     private URI apiUrl;
     private Duration fetchInterval;
-    private Duration historyWindow;
-    private int historyCapacity = 2000;
 }

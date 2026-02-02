@@ -1,8 +1,8 @@
 package com.xbleey.goldpricealert.service;
 
-import com.xbleey.goldpricealert.config.GoldProperties;
 import com.xbleey.goldpricealert.model.GoldApiResponse;
 import com.xbleey.goldpricealert.model.GoldPriceSnapshot;
+import com.xbleey.goldpricealert.support.InMemoryGoldPriceSnapshotStore;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -15,21 +15,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 class GoldPriceHistoryTest {
 
     @Test
-    void prunesSnapshotsOutsideWindow() {
-        GoldPriceHistory history = new GoldPriceHistory(properties(Duration.ofMinutes(10), 10));
+    void storesAllSnapshots() {
+        GoldPriceHistory history = new GoldPriceHistory(new InMemoryGoldPriceSnapshotStore());
         Instant base = Instant.parse("2026-01-05T12:00:00Z");
 
-        history.add(snapshot(base.minus(Duration.ofMinutes(20)), "1900.00"));
-        history.add(snapshot(base, "1910.00"));
+        GoldPriceSnapshot s1 = snapshot(base.minus(Duration.ofMinutes(20)), "1900.00");
+        GoldPriceSnapshot s2 = snapshot(base, "1910.00");
+
+        history.add(s1);
+        history.add(s2);
 
         List<GoldPriceSnapshot> all = history.getAll();
-        assertThat(all).hasSize(1);
-        assertThat(all.get(0).fetchedAt()).isEqualTo(base);
+        assertThat(all).containsExactly(s1, s2);
     }
 
     @Test
-    void respectsCapacityAndReturnsRecentSnapshots() {
-        GoldPriceHistory history = new GoldPriceHistory(properties(Duration.ofMinutes(60), 2));
+    void returnsRecentSnapshotsInChronologicalOrder() {
+        GoldPriceHistory history = new GoldPriceHistory(new InMemoryGoldPriceSnapshotStore());
         Instant base = Instant.parse("2026-01-05T12:00:00Z");
 
         GoldPriceSnapshot s1 = snapshot(base.minusSeconds(2), "1900.00");
@@ -40,13 +42,12 @@ class GoldPriceHistoryTest {
         history.add(s2);
         history.add(s3);
 
-        assertThat(history.getAll()).containsExactly(s2, s3);
-        assertThat(history.getRecent(1)).containsExactly(s3);
+        assertThat(history.getRecent(2)).containsExactly(s2, s3);
     }
 
     @Test
     void findsSnapshotAtOrBeforeTarget() {
-        GoldPriceHistory history = new GoldPriceHistory(properties(Duration.ofMinutes(60), 10));
+        GoldPriceHistory history = new GoldPriceHistory(new InMemoryGoldPriceSnapshotStore());
         Instant base = Instant.parse("2026-01-05T12:00:00Z");
 
         GoldPriceSnapshot s1 = snapshot(base.minusSeconds(20), "1900.00");
@@ -70,10 +71,4 @@ class GoldPriceHistoryTest {
         return new GoldPriceSnapshot(time, response);
     }
 
-    private static GoldProperties properties(Duration window, int capacity) {
-        GoldProperties properties = new GoldProperties();
-        properties.setHistoryWindow(window);
-        properties.setHistoryCapacity(capacity);
-        return properties;
-    }
 }

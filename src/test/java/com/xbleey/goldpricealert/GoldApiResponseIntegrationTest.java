@@ -3,9 +3,11 @@ package com.xbleey.goldpricealert;
 import com.xbleey.goldpricealert.model.GoldApiResponse;
 import java.net.URI;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 
+@Tag("manual")
 class GoldApiResponseIntegrationTest {
 
     @Test
