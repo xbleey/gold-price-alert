@@ -11,6 +11,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,7 +24,12 @@ class GoldAlertEvaluatorTest {
         Instant now = Instant.parse("2026-01-05T12:00:00Z");
         Clock clock = Clock.fixed(now, ZoneOffset.UTC);
         GoldPriceHistory history = new GoldPriceHistory(new InMemoryGoldPriceSnapshotStore());
-        GoldAlertEvaluator evaluator = new GoldAlertEvaluator(history, clock, GoldAlertNotifier.noop());
+        GoldAlertEvaluator evaluator = new GoldAlertEvaluator(
+                history,
+                clock,
+                GoldAlertNotifier.noop(),
+                windowProperties()
+        );
 
         history.add(snapshot(now.minus(Duration.ofMinutes(2)), "100.00"));
 
@@ -36,7 +43,12 @@ class GoldAlertEvaluatorTest {
         Instant now = Instant.parse("2026-01-05T12:00:00Z");
         Clock clock = Clock.fixed(now, ZoneOffset.UTC);
         GoldPriceHistory history = new GoldPriceHistory(new InMemoryGoldPriceSnapshotStore());
-        GoldAlertEvaluator evaluator = new GoldAlertEvaluator(history, clock, GoldAlertNotifier.noop());
+        GoldAlertEvaluator evaluator = new GoldAlertEvaluator(
+                history,
+                clock,
+                GoldAlertNotifier.noop(),
+                windowProperties()
+        );
 
         GoldPriceSnapshot latest = snapshot(now, "101.00");
 
@@ -49,7 +61,12 @@ class GoldAlertEvaluatorTest {
         Clock clock = Clock.fixed(now, ZoneOffset.UTC);
         GoldPriceHistory history = new GoldPriceHistory(new InMemoryGoldPriceSnapshotStore());
         AtomicReference<GoldAlertMessage> captured = new AtomicReference<>();
-        GoldAlertEvaluator evaluator = new GoldAlertEvaluator(history, clock, captured::set);
+        GoldAlertEvaluator evaluator = new GoldAlertEvaluator(
+                history,
+                clock,
+                captured::set,
+                windowProperties()
+        );
 
         history.add(snapshot(now.minus(Duration.ofMinutes(60)), "100.00"));
         history.add(snapshot(now.minus(Duration.ofMinutes(15)), "101.10"));
@@ -74,5 +91,16 @@ class GoldAlertEvaluatorTest {
         return new GoldPriceSnapshot(time, response);
     }
 
-    
+    private static com.xbleey.goldpricealert.config.GoldAlertWindowProperties windowProperties() {
+        com.xbleey.goldpricealert.config.GoldAlertWindowProperties properties =
+                new com.xbleey.goldpricealert.config.GoldAlertWindowProperties();
+        Map<GoldAlertLevel, Duration> levels = new EnumMap<>(GoldAlertLevel.class);
+        levels.put(GoldAlertLevel.INFO_LEVEL, Duration.ofMinutes(1));
+        levels.put(GoldAlertLevel.MINOR_LEVEL, Duration.ofMinutes(5));
+        levels.put(GoldAlertLevel.MODERATE_LEVEL, Duration.ofMinutes(15));
+        levels.put(GoldAlertLevel.MAJOR_LEVEL, Duration.ofMinutes(60));
+        levels.put(GoldAlertLevel.CRITICAL_LEVEL, Duration.ofMinutes(60));
+        properties.setLevels(levels);
+        return properties;
+    }
 }
