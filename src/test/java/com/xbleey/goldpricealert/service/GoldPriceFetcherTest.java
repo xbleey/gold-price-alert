@@ -1,7 +1,9 @@
 package com.xbleey.goldpricealert.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xbleey.goldpricealert.config.GoldAlertWindowProperties;
 import com.xbleey.goldpricealert.config.GoldProperties;
+import com.xbleey.goldpricealert.enums.GoldAlertLevel;
 import com.xbleey.goldpricealert.support.InMemoryGoldPriceSnapshotStore;
 import okhttp3.OkHttpClient;
 import okhttp3.mockwebserver.MockResponse;
@@ -15,8 +17,11 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.EnumMap;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class GoldPriceFetcherTest {
 
@@ -85,7 +90,12 @@ class GoldPriceFetcherTest {
         properties.setFetchInterval(Duration.ofSeconds(5));
 
         GoldPriceHistory history = new GoldPriceHistory(new InMemoryGoldPriceSnapshotStore());
-        GoldAlertEvaluator evaluator = new GoldAlertEvaluator(history, clock, GoldAlertNotifier.noop());
+        GoldAlertEvaluator evaluator = new GoldAlertEvaluator(
+                history,
+                clock,
+                GoldAlertNotifier.noop(),
+                windowProperties()
+        );
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
         GoldPriceFetcher fetcher = new GoldPriceFetcher(
@@ -95,11 +105,24 @@ class GoldPriceFetcherTest {
                 history,
                 evaluator,
                 null,
+                mock(GoldApiStatusMonitor.class),
                 clock
         );
         return new FetcherFixture(fetcher, history);
     }
 
     private record FetcherFixture(GoldPriceFetcher fetcher, GoldPriceHistory history) {
+    }
+
+    private static GoldAlertWindowProperties windowProperties() {
+        GoldAlertWindowProperties properties = new GoldAlertWindowProperties();
+        Map<GoldAlertLevel, Duration> levels = new EnumMap<>(GoldAlertLevel.class);
+        levels.put(GoldAlertLevel.INFO_LEVEL, Duration.ofMinutes(1));
+        levels.put(GoldAlertLevel.MINOR_LEVEL, Duration.ofMinutes(5));
+        levels.put(GoldAlertLevel.MODERATE_LEVEL, Duration.ofMinutes(15));
+        levels.put(GoldAlertLevel.MAJOR_LEVEL, Duration.ofMinutes(60));
+        levels.put(GoldAlertLevel.CRITICAL_LEVEL, Duration.ofMinutes(60));
+        properties.setLevels(levels);
+        return properties;
     }
 }

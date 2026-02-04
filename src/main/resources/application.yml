@@ -37,9 +37,16 @@ server:
 
 gold:
   api-url: https://api.gold-api.com/price/XAU
-  fetch-interval: 1m
+  fetch-interval: 20s
   log-dir: ${GOLD_LOG_DIR:/app/logs}
   alert:
+    window:
+      levels:
+        INFO_LEVEL: 1m
+        MINOR_LEVEL: 5m
+        MODERATE_LEVEL: 15m
+        MAJOR_LEVEL: 60m
+        CRITICAL_LEVEL: 60m
     mail:
       sender: ${GOLD_MAIL_SENDER:}
       recipients: ${GOLD_MAIL_RECIPIENTS:}
