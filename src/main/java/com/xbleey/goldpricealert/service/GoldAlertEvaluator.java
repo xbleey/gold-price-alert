@@ -1,5 +1,6 @@
 package com.xbleey.goldpricealert.service;
 
+import com.xbleey.goldpricealert.config.GoldAlertWindowProperties;
 import com.xbleey.goldpricealert.enums.GoldAlertLevel;
 import com.xbleey.goldpricealert.model.GoldPriceSnapshot;
 import org.slf4j.Logger;
@@ -10,6 +11,7 @@ import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
@@ -25,17 +27,28 @@ public class GoldAlertEvaluator {
     private final GoldPriceHistory history;
     private final Clock clock;
     private final GoldAlertNotifier alertNotifier;
+    private final GoldAlertWindowProperties windowProperties;
 
-    public GoldAlertEvaluator(GoldPriceHistory history, Clock clock, GoldAlertNotifier alertNotifier) {
+    public GoldAlertEvaluator(
+            GoldPriceHistory history,
+            Clock clock,
+            GoldAlertNotifier alertNotifier,
+            GoldAlertWindowProperties windowProperties
+    ) {
         this.history = history;
         this.clock = clock;
         this.alertNotifier = alertNotifier == null ? GoldAlertNotifier.noop() : alertNotifier;
+        this.windowProperties = windowProperties;
     }
 
     public boolean evaluate(GoldPriceSnapshot latest) {
         AlertCandidate bestCandidate = null;
         for (GoldAlertLevel level : GoldAlertLevel.values()) {
-            Instant target = latest.fetchedAt().minus(level.getWindow());
+            Duration window = windowProperties.windowFor(level);
+            if (window == null) {
+                continue;
+            }
+            Instant target = latest.fetchedAt().minus(window);
             Optional<GoldPriceSnapshot> baseline = history.findSnapshotAtOrBefore(target);
             if (baseline.isPresent()) {
                 BigDecimal baselinePrice = baseline.get().price();
@@ -51,11 +64,11 @@ public class GoldAlertEvaluator {
                 BigDecimal threshold = level.getThresholdPercent();
                 if (absChange.compareTo(threshold) >= 0) {
                     if (bestCandidate == null) {
-                        bestCandidate = new AlertCandidate(level, baselinePrice, changePercent, absChange);
+                        bestCandidate = new AlertCandidate(level, window, baselinePrice, changePercent, absChange);
                     } else {
                         int absCompare = absChange.compareTo(bestCandidate.absChangePercent);
                         if (absCompare > 0 || (absCompare == 0 && level.ordinal() > bestCandidate.level.ordinal())) {
-                            bestCandidate = new AlertCandidate(level, baselinePrice, changePercent, absChange);
+                            bestCandidate = new AlertCandidate(level, window, baselinePrice, changePercent, absChange);
                         }
                     }
                 }
@@ -73,7 +86,7 @@ public class GoldAlertEvaluator {
                     bestCandidate.level,
                     alertMessage,
                     latest.fetchedAt(),
-                    bestCandidate.level.getWindow(),
+                    bestCandidate.window,
                     bestCandidate.level.getThresholdPercent(),
                     bestCandidate.changePercent,
                     bestCandidate.baselinePrice,
@@ -91,7 +104,7 @@ public class GoldAlertEvaluator {
 
     private String formatAlertMessage(AlertCandidate candidate, GoldPriceSnapshot latest, String alertTime) {
         return "WARNING!!WARNING!!WARNING!! level: " + candidate.level.getLevelName()
-                + " | window=" + candidate.level.getWindow()
+                + " | window=" + candidate.window
                 + " threshold=" + formatPercent(candidate.level.getThresholdPercent()) + "%, change="
                 + formatPercent(candidate.changePercent) + "%, price "
                 + candidate.baselinePrice + " -> " + latest.price()
@@ -100,17 +113,20 @@ public class GoldAlertEvaluator {
 
     private static final class AlertCandidate {
         private final GoldAlertLevel level;
+        private final Duration window;
         private final BigDecimal baselinePrice;
         private final BigDecimal changePercent;
         private final BigDecimal absChangePercent;
 
         private AlertCandidate(
                 GoldAlertLevel level,
+                Duration window,
                 BigDecimal baselinePrice,
                 BigDecimal changePercent,
                 BigDecimal absChangePercent
         ) {
             this.level = level;
+            this.window = window;
             this.baselinePrice = baselinePrice;
             this.changePercent = changePercent;
             this.absChangePercent = absChangePercent;
