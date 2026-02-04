@@ -31,6 +31,7 @@ public class GoldPriceFetcher {
     private final GoldProperties properties;
     private final GoldPriceHistory history;
     private final GoldAlertEvaluator evaluator;
+    private final GoldThresholdAlertEvaluator thresholdEvaluator;
     private final Clock clock;
 
     public GoldPriceFetcher(
@@ -39,6 +40,7 @@ public class GoldPriceFetcher {
             GoldProperties properties,
             GoldPriceHistory history,
             GoldAlertEvaluator evaluator,
+            GoldThresholdAlertEvaluator thresholdEvaluator,
             Clock clock
     ) {
         this.okHttpClient = okHttpClient;
@@ -46,6 +48,7 @@ public class GoldPriceFetcher {
         this.properties = properties;
         this.history = history;
         this.evaluator = evaluator;
+        this.thresholdEvaluator = thresholdEvaluator;
         this.clock = clock;
     }
 
@@ -80,6 +83,9 @@ public class GoldPriceFetcher {
                 GoldPriceSnapshot snapshot = new GoldPriceSnapshot(fetchedAt, response);
                 history.add(snapshot);
                 boolean alerted = evaluator.evaluate(snapshot);
+                if (thresholdEvaluator != null) {
+                    thresholdEvaluator.evaluate(snapshot);
+                }
                 String updatedAtFormatted = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
                         .withZone(clock.getZone())
                         .format(response.updatedAt());
