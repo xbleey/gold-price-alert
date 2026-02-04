@@ -32,6 +32,7 @@ public class GoldPriceFetcher {
     private final GoldPriceHistory history;
     private final GoldAlertEvaluator evaluator;
     private final GoldThresholdAlertEvaluator thresholdEvaluator;
+    private final GoldApiStatusMonitor apiStatusMonitor;
     private final Clock clock;
 
     public GoldPriceFetcher(
@@ -41,6 +42,7 @@ public class GoldPriceFetcher {
             GoldPriceHistory history,
             GoldAlertEvaluator evaluator,
             GoldThresholdAlertEvaluator thresholdEvaluator,
+            GoldApiStatusMonitor apiStatusMonitor,
             Clock clock
     ) {
         this.okHttpClient = okHttpClient;
@@ -49,6 +51,7 @@ public class GoldPriceFetcher {
         this.history = history;
         this.evaluator = evaluator;
         this.thresholdEvaluator = thresholdEvaluator;
+        this.apiStatusMonitor = apiStatusMonitor;
         this.clock = clock;
     }
 
@@ -68,11 +71,14 @@ public class GoldPriceFetcher {
         try {
             try (Response httpResponse = okHttpClient.newCall(request).execute()) {
                 if (!httpResponse.isSuccessful()) {
+                    String errorDetail = "HTTP status " + httpResponse.code();
                     log.warn("Gold API returned http status {}", httpResponse.code());
+                    apiStatusMonitor.recordFailure(errorDetail);
                     return Optional.empty();
                 }
                 if (httpResponse.body() == null) {
                     log.warn("Gold API returned empty body");
+                    apiStatusMonitor.recordFailure("Empty response body");
                     return Optional.empty();
                 }
                 GoldApiResponse response = objectMapper.readValue(
@@ -82,6 +88,7 @@ public class GoldPriceFetcher {
                 Instant fetchedAt = Instant.now(clock);
                 GoldPriceSnapshot snapshot = new GoldPriceSnapshot(fetchedAt, response);
                 history.add(snapshot);
+                apiStatusMonitor.recordSuccess();
                 boolean alerted = evaluator.evaluate(snapshot);
                 if (thresholdEvaluator != null) {
                     thresholdEvaluator.evaluate(snapshot);
@@ -96,6 +103,7 @@ public class GoldPriceFetcher {
             }
         } catch (Exception ex) {
             log.warn("Failed to fetch gold price", ex);
+            apiStatusMonitor.recordFailure(ex.getMessage());
             return Optional.empty();
         }
     }

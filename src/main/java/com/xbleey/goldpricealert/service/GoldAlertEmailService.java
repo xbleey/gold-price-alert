@@ -70,6 +70,28 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         sendEmail(targets, buildThresholdSubject(message), buildThresholdPlainText(message), buildThresholdHtmlBody(message));
     }
 
+    public void notifyApiError(GoldApiErrorMessage message) {
+        if (message == null) {
+            return;
+        }
+        EmailTargets targets = resolveEmailTargets();
+        if (targets == null) {
+            return;
+        }
+        sendEmail(targets, buildApiErrorSubject(), buildApiErrorPlainText(message), buildApiErrorHtmlBody(message));
+    }
+
+    public void notifyApiResume(GoldApiResumeMessage message) {
+        if (message == null) {
+            return;
+        }
+        EmailTargets targets = resolveEmailTargets();
+        if (targets == null) {
+            return;
+        }
+        sendEmail(targets, buildApiResumeSubject(), buildApiResumePlainText(message), buildApiResumeHtmlBody(message));
+    }
+
     private boolean shouldSend(GoldAlertMessage message) {
         if (message == null || message.level() == null) {
             return false;
@@ -161,6 +183,14 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         return "Gold Price Alert " + direction + " " + formatPrice(message == null ? null : message.threshold());
     }
 
+    private String buildApiErrorSubject() {
+        return "Gold Price API ERROR";
+    }
+
+    private String buildApiResumeSubject() {
+        return "Gold Price API RESUME";
+    }
+
     private String resolveDirectionTag(GoldAlertMessage message) {
         if (message == null || message.changePercent() == null) {
             return "[?]";
@@ -231,6 +261,29 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         return builder.toString();
     }
 
+    private String buildApiErrorPlainText(GoldApiErrorMessage message) {
+        StringBuilder builder = new StringBuilder();
+        ZoneId zone = clock.getZone();
+        builder.append("Gold Price API ERROR").append('\n');
+        builder.append("time=").append(formatInstant(message.failureTime(), zone)).append('\n');
+        builder.append("api=").append(safeValue(message.apiUrl())).append('\n');
+        builder.append("error=").append(safeValue(message.errorDetail())).append('\n');
+        builder.append("downtime=").append(formatDuration(message.downtime())).append('\n');
+        builder.append("note=API 长时间未恢复").append('\n');
+        return builder.toString();
+    }
+
+    private String buildApiResumePlainText(GoldApiResumeMessage message) {
+        StringBuilder builder = new StringBuilder();
+        ZoneId zone = clock.getZone();
+        builder.append("Gold Price API RESUME").append('\n');
+        builder.append("resumeTime=").append(formatInstant(message.resumeTime(), zone)).append('\n');
+        builder.append("firstFailureTime=").append(formatInstant(message.firstFailureTime(), zone)).append('\n');
+        builder.append("downtime=").append(formatDuration(message.downtime())).append('\n');
+        builder.append("api=").append(safeValue(message.apiUrl())).append('\n');
+        return builder.toString();
+    }
+
     private String buildHtmlBody(GoldAlertMessage message) {
         StringBuilder builder = new StringBuilder();
         ZoneId zone = clock.getZone();
@@ -290,6 +343,43 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 .append(message == null || message.recentSnapshots() == null ? 0 : message.recentSnapshots().size())
                 .append(")</h3>");
         appendHtmlTable(builder, message == null ? null : message.recentSnapshots(), zone, updatedAtZone);
+        builder.append("</body></html>");
+        return builder.toString();
+    }
+
+    private String buildApiErrorHtmlBody(GoldApiErrorMessage message) {
+        StringBuilder builder = new StringBuilder();
+        ZoneId zone = clock.getZone();
+        builder.append("<html><body>");
+        builder.append("<h2>Gold Price API ERROR</h2>");
+        builder.append("<p>time=")
+                .append(escapeHtml(formatInstant(message.failureTime(), zone)))
+                .append("</p>");
+        builder.append("<p>api=").append(escapeHtml(safeValue(message.apiUrl()))).append("</p>");
+        builder.append("<p>error=").append(escapeHtml(safeValue(message.errorDetail()))).append("</p>");
+        builder.append("<p><span style=\"color:#d32f2f;font-weight:bold;\">")
+                .append("已连续失败时长: ")
+                .append(escapeHtml(formatDuration(message.downtime())))
+                .append("</span></p>");
+        builder.append("</body></html>");
+        return builder.toString();
+    }
+
+    private String buildApiResumeHtmlBody(GoldApiResumeMessage message) {
+        StringBuilder builder = new StringBuilder();
+        ZoneId zone = clock.getZone();
+        builder.append("<html><body>");
+        builder.append("<h2>Gold Price API RESUME</h2>");
+        builder.append("<p>resumeTime=")
+                .append(escapeHtml(formatInstant(message.resumeTime(), zone)))
+                .append("</p>");
+        builder.append("<p>firstFailureTime=")
+                .append(escapeHtml(formatInstant(message.firstFailureTime(), zone)))
+                .append("</p>");
+        builder.append("<p>downtime=")
+                .append(escapeHtml(formatDuration(message.downtime())))
+                .append("</p>");
+        builder.append("<p>api=").append(escapeHtml(safeValue(message.apiUrl()))).append("</p>");
         builder.append("</body></html>");
         return builder.toString();
     }
