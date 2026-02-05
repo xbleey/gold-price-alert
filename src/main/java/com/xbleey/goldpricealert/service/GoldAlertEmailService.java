@@ -29,6 +29,13 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
     private static final Logger log = LoggerFactory.getLogger(GoldAlertEmailService.class);
     private static final DateTimeFormatter REPORT_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final Duration CHART_WINDOW = Duration.ofMinutes(20);
+    private static final Duration CHART_EXPECTED_INTERVAL = Duration.ofSeconds(20);
+    private static final Duration CHART_GAP_THRESHOLD = CHART_EXPECTED_INTERVAL.multipliedBy(2);
+    private static final int CHART_MAX_POINTS = 60;
+    private static final int CHART_WIDTH = 600;
+    private static final int CHART_HEIGHT = 160;
+    private static final int CHART_PADDING = 24;
 
     private final JavaMailSender mailSender;
     private final GoldAlertMailProperties properties;
@@ -233,6 +240,8 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 .append(zone.getId())
                 .append('\n')
                 .append('\n');
+        builder.append("Gold Price Chart (20m)").append('\n');
+        builder.append(buildPlainTextChart(message.recentSnapshots(), message.alertTime()));
         builder.append("Recent GoldPriceSnapshot (last ")
                 .append(message.recentSnapshots() == null ? 0 : message.recentSnapshots().size())
                 .append(")")
@@ -253,6 +262,9 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 .append(formatInstant(message == null ? null : message.alertTime(), ZoneId.of("UTC+08:00")))
                 .append('\n')
                 .append('\n');
+        builder.append("Gold Price Chart (20m)").append('\n');
+        builder.append(buildPlainTextChart(message == null ? null : message.recentSnapshots(),
+                message == null ? null : message.alertTime()));
         builder.append("Recent GoldPriceSnapshot (last ")
                 .append(message == null || message.recentSnapshots() == null ? 0 : message.recentSnapshots().size())
                 .append(")")
@@ -313,6 +325,7 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 .append(' ')
                 .append(escapeHtml(zone.getId()))
                 .append("</p>");
+        builder.append(buildHtmlChartSection(message.recentSnapshots(), message.alertTime(), zone));
         builder.append("<h3>Recent GoldPriceSnapshot (last ")
                 .append(message.recentSnapshots() == null ? 0 : message.recentSnapshots().size())
                 .append(")</h3>");
@@ -339,6 +352,8 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         builder.append("<h3>time (UTC+8)=")
                 .append(escapeHtml(formatInstant(message == null ? null : message.alertTime(), ZoneId.of("UTC+08:00"))))
                 .append("</h3>");
+        builder.append(buildHtmlChartSection(message == null ? null : message.recentSnapshots(),
+                message == null ? null : message.alertTime(), zone));
         builder.append("<h3>Recent GoldPriceSnapshot (last ")
                 .append(message == null || message.recentSnapshots() == null ? 0 : message.recentSnapshots().size())
                 .append(")</h3>");
@@ -455,6 +470,197 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
             }
         }
         builder.append("</tbody></table>");
+    }
+
+    private String buildHtmlChartSection(List<GoldPriceSnapshot> recentSnapshots, Instant anchorTime, ZoneId zone) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("<h3>Gold Price Chart (20m)</h3>");
+        builder.append(buildHtmlPriceChart(recentSnapshots, anchorTime, zone));
+        return builder.toString();
+    }
+
+    private String buildHtmlPriceChart(List<GoldPriceSnapshot> recentSnapshots, Instant anchorTime, ZoneId zone) {
+        ChartData chartData = buildChartData(recentSnapshots, anchorTime);
+        if (chartData.points().isEmpty()) {
+            return "<p>chart=无可用数据</p>";
+        }
+        StringBuilder builder = new StringBuilder();
+        builder.append("<svg width=\"").append(CHART_WIDTH)
+                .append("\" height=\"").append(CHART_HEIGHT + 40)
+                .append("\" viewBox=\"0 0 ").append(CHART_WIDTH).append(" ")
+                .append(CHART_HEIGHT + 40)
+                .append("\" xmlns=\"http://www.w3.org/2000/svg\">");
+        builder.append("<rect x=\"0\" y=\"0\" width=\"").append(CHART_WIDTH)
+                .append("\" height=\"").append(CHART_HEIGHT + 40)
+                .append("\" fill=\"#ffffff\"/>");
+        builder.append("<rect x=\"").append(CHART_PADDING)
+                .append("\" y=\"").append(CHART_PADDING)
+                .append("\" width=\"").append(CHART_WIDTH - CHART_PADDING * 2)
+                .append("\" height=\"").append(CHART_HEIGHT - CHART_PADDING)
+                .append("\" fill=\"#fafafa\" stroke=\"#e0e0e0\"/>");
+        appendChartAxisLabels(builder);
+        appendChartPriceRange(builder, chartData, zone);
+        appendChartSegments(builder, chartData);
+        builder.append("</svg>");
+        return builder.toString();
+    }
+
+    private void appendChartAxisLabels(StringBuilder builder) {
+        int baseY = CHART_HEIGHT + 20;
+        int[] minutes = new int[]{-20, -15, -10, -5, 0};
+        for (int minute : minutes) {
+            double ratio = (minute + 20) / 20.0;
+            int x = (int) Math.round(CHART_PADDING + ratio * (CHART_WIDTH - CHART_PADDING * 2));
+            builder.append("<text x=\"").append(x).append("\" y=\"").append(baseY)
+                    .append("\" fill=\"#616161\" font-size=\"12\" text-anchor=\"middle\">")
+                    .append(minute).append("m</text>");
+        }
+    }
+
+    private void appendChartPriceRange(StringBuilder builder, ChartData chartData, ZoneId zone) {
+        String minValue = escapeHtml(formatPrice(chartData.minPrice()));
+        String maxValue = escapeHtml(formatPrice(chartData.maxPrice()));
+        builder.append("<text x=\"").append(CHART_PADDING)
+                .append("\" y=\"").append(CHART_PADDING - 6)
+                .append("\" fill=\"#616161\" font-size=\"12\">")
+                .append("高 ").append(maxValue)
+                .append("</text>");
+        builder.append("<text x=\"").append(CHART_PADDING)
+                .append("\" y=\"").append(CHART_HEIGHT - 6)
+                .append("\" fill=\"#616161\" font-size=\"12\">")
+                .append("低 ").append(minValue)
+                .append("</text>");
+        if (chartData.anchorTime() != null) {
+            builder.append("<text x=\"").append(CHART_WIDTH - CHART_PADDING)
+                    .append("\" y=\"").append(CHART_PADDING - 6)
+                    .append("\" fill=\"#616161\" font-size=\"12\" text-anchor=\"end\">")
+                    .append("截至 ")
+                    .append(escapeHtml(formatInstant(chartData.anchorTime(), zone)))
+                    .append("</text>");
+        }
+    }
+
+    private void appendChartSegments(StringBuilder builder, ChartData chartData) {
+        for (List<ChartPoint> segment : chartData.points()) {
+            if (segment.size() < 2) {
+                if (!segment.isEmpty()) {
+                    ChartPoint point = segment.getFirst();
+                    builder.append("<circle cx=\"").append(point.x())
+                            .append("\" cy=\"").append(point.y())
+                            .append("\" r=\"2\" fill=\"#1976d2\"/>");
+                }
+                continue;
+            }
+            StringBuilder polyline = new StringBuilder();
+            for (ChartPoint point : segment) {
+                polyline.append(point.x()).append(',').append(point.y()).append(' ');
+            }
+            builder.append("<polyline fill=\"none\" stroke=\"#1976d2\" stroke-width=\"2\" points=\"")
+                    .append(polyline)
+                    .append("\"/>");
+        }
+    }
+
+    private String buildPlainTextChart(List<GoldPriceSnapshot> recentSnapshots, Instant anchorTime) {
+        ChartData chartData = buildChartData(recentSnapshots, anchorTime);
+        if (chartData.points().isEmpty()) {
+            return "chart=无可用数据\n";
+        }
+        char[] sparkline = new char[CHART_MAX_POINTS];
+        for (int i = 0; i < sparkline.length; i++) {
+            sparkline[i] = ' ';
+        }
+        for (List<ChartPoint> segment : chartData.points()) {
+            for (ChartPoint point : segment) {
+                if (point.index() >= 0 && point.index() < sparkline.length) {
+                    sparkline[point.index()] = '*';
+                }
+            }
+        }
+        StringBuilder builder = new StringBuilder();
+        builder.append('[').append(new String(sparkline)).append(']').append('\n');
+        builder.append("轴: -20m -15m -10m -5m 0").append('\n');
+        builder.append("价格: ").append(formatPrice(chartData.minPrice()))
+                .append(" ~ ").append(formatPrice(chartData.maxPrice()))
+                .append('\n');
+        return builder.toString();
+    }
+
+    private ChartData buildChartData(List<GoldPriceSnapshot> recentSnapshots, Instant anchorTime) {
+        if (recentSnapshots == null || recentSnapshots.isEmpty()) {
+            return new ChartData(List.of(), BigDecimal.ZERO, BigDecimal.ZERO, anchorTime);
+        }
+        Instant effectiveAnchor = anchorTime == null ? recentSnapshots.getFirst().fetchedAt() : anchorTime;
+        Instant windowStart = effectiveAnchor.minus(CHART_WINDOW);
+        List<GoldPriceSnapshot> ordered = recentSnapshots.stream()
+                .filter(Objects::nonNull)
+                .filter(snapshot -> snapshot.fetchedAt() != null)
+                .filter(snapshot -> !snapshot.fetchedAt().isAfter(effectiveAnchor))
+                .filter(snapshot -> !snapshot.fetchedAt().isBefore(windowStart))
+                .sorted((a, b) -> a.fetchedAt().compareTo(b.fetchedAt()))
+                .toList();
+        if (ordered.isEmpty()) {
+            return new ChartData(List.of(), BigDecimal.ZERO, BigDecimal.ZERO, effectiveAnchor);
+        }
+        BigDecimal minPrice = null;
+        BigDecimal maxPrice = null;
+        for (GoldPriceSnapshot snapshot : ordered) {
+            BigDecimal price = snapshot.getPrice();
+            if (price == null) {
+                continue;
+            }
+            if (minPrice == null || price.compareTo(minPrice) < 0) {
+                minPrice = price;
+            }
+            if (maxPrice == null || price.compareTo(maxPrice) > 0) {
+                maxPrice = price;
+            }
+        }
+        if (minPrice == null || maxPrice == null) {
+            return new ChartData(List.of(), BigDecimal.ZERO, BigDecimal.ZERO, effectiveAnchor);
+        }
+        if (minPrice.compareTo(maxPrice) == 0) {
+            minPrice = minPrice.subtract(BigDecimal.ONE);
+            maxPrice = maxPrice.add(BigDecimal.ONE);
+        }
+        List<List<ChartPoint>> segments = new java.util.ArrayList<>();
+        List<ChartPoint> current = new java.util.ArrayList<>();
+        Instant previousTime = null;
+        for (GoldPriceSnapshot snapshot : ordered) {
+            BigDecimal price = snapshot.getPrice();
+            if (price == null) {
+                continue;
+            }
+            Instant fetchedAt = snapshot.fetchedAt();
+            if (previousTime != null) {
+                Duration gap = Duration.between(previousTime, fetchedAt);
+                if (gap.compareTo(CHART_GAP_THRESHOLD) > 0) {
+                    if (!current.isEmpty()) {
+                        segments.add(List.copyOf(current));
+                        current = new java.util.ArrayList<>();
+                    }
+                }
+            }
+            double ratio = (double) Duration.between(windowStart, fetchedAt).toMillis()
+                    / (double) CHART_WINDOW.toMillis();
+            int x = (int) Math.round(CHART_PADDING + ratio * (CHART_WIDTH - CHART_PADDING * 2));
+            double priceRatio = price.subtract(minPrice).doubleValue()
+                    / maxPrice.subtract(minPrice).doubleValue();
+            int y = (int) Math.round(CHART_HEIGHT - CHART_PADDING - priceRatio * (CHART_HEIGHT - CHART_PADDING * 2));
+            int index = (int) Math.round(ratio * (CHART_MAX_POINTS - 1));
+            current.add(new ChartPoint(x, y, index));
+            previousTime = fetchedAt;
+        }
+        if (!current.isEmpty()) {
+            segments.add(List.copyOf(current));
+        }
+        return new ChartData(segments, minPrice, maxPrice, effectiveAnchor);
+    }
+
+    private record ChartPoint(int x, int y, int index) {
+    }
+
+    private record ChartData(List<List<ChartPoint>> points, BigDecimal minPrice, BigDecimal maxPrice, Instant anchorTime) {
     }
 
     private String formatInstant(Instant instant, ZoneId zone) {

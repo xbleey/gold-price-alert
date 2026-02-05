@@ -91,7 +91,7 @@ public class GoldAlertEvaluator {
                     bestCandidate.changePercent,
                     bestCandidate.baselinePrice,
                     latest.price(),
-                    history.getRecent(20)
+                    history.getRecent(60)
             ));
             return true;
         }
