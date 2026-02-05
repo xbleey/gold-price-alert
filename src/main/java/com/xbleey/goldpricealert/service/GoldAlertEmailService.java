@@ -48,7 +48,11 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
     private static final int CHART_MAX_POINTS = 60;
     private static final int CHART_WIDTH = 900;
     private static final int CHART_HEIGHT = 240;
-    private static final int CHART_PADDING = 36;
+    // 预留左侧空间用于显示完整的价格刻度文本，避免被裁剪
+    private static final int CHART_LEFT_PADDING = 90;
+    private static final int CHART_RIGHT_PADDING = 36;
+    private static final int CHART_TOP_PADDING = 36;
+    private static final int CHART_BOTTOM_PADDING = 36;
     private static final int CHART_AXIS_LABEL_HEIGHT = 60;
     private static final int CHART_Y_TICK_COUNT = 4;
 
@@ -190,17 +194,17 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             boolean hasInline = content != null && !content.inlineImages().isEmpty();
-            String htmlBody = content == null ? "" : content.html();
-            boolean hasHtml = htmlBody != null && !htmlBody.isBlank();
-            boolean multipart = hasInline || hasHtml;
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, multipart, StandardCharsets.UTF_8.name());
+            boolean hasHtml = content != null && content.html() != null && !content.html().isBlank();
+            // 需要发送HTML正文时必须启用multipart，避免非multipart模式下设置HTML导致异常
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, hasInline || hasHtml, StandardCharsets.UTF_8.name());
             helper.setFrom(targets.sender());
             helper.setTo(targets.recipients().toArray(new String[0]));
             helper.setSubject(subject);
+            String htmlBody = content == null ? "" : content.html();
             if (hasHtml) {
                 helper.setText(plainText, htmlBody);
             } else {
-                helper.setText(plainText);
+                helper.setText(plainText, false);
             }
             if (hasInline) {
                 for (InlineImage inlineImage : content.inlineImages()) {
@@ -624,10 +628,11 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
             }
             double ratio = (double) Duration.between(windowStart, fetchedAt).toMillis()
                     / (double) CHART_WINDOW.toMillis();
-            int x = (int) Math.round(CHART_PADDING + ratio * (CHART_WIDTH - CHART_PADDING * 2));
+            int x = (int) Math.round(CHART_LEFT_PADDING + ratio * (CHART_WIDTH - CHART_LEFT_PADDING - CHART_RIGHT_PADDING));
             double priceRatio = price.subtract(minPrice).doubleValue()
                     / maxPrice.subtract(minPrice).doubleValue();
-            int y = (int) Math.round(CHART_HEIGHT - CHART_PADDING - priceRatio * (CHART_HEIGHT - CHART_PADDING * 2));
+            int y = (int) Math.round(CHART_HEIGHT - CHART_BOTTOM_PADDING
+                    - priceRatio * (CHART_HEIGHT - CHART_TOP_PADDING - CHART_BOTTOM_PADDING));
             int index = (int) Math.round(ratio * (CHART_MAX_POINTS - 1));
             current.add(new ChartPoint(x, y, index));
             previousTime = fetchedAt;
@@ -665,12 +670,12 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
             graphics.setColor(Color.WHITE);
             graphics.fillRect(0, 0, CHART_WIDTH, imageHeight);
 
-            int chartWidth = CHART_WIDTH - CHART_PADDING * 2;
-            int chartHeight = CHART_HEIGHT - CHART_PADDING * 2;
+            int chartWidth = CHART_WIDTH - CHART_LEFT_PADDING - CHART_RIGHT_PADDING;
+            int chartHeight = CHART_HEIGHT - CHART_TOP_PADDING - CHART_BOTTOM_PADDING;
             graphics.setColor(new Color(0xFA, 0xFA, 0xFA));
-            graphics.fillRect(CHART_PADDING, CHART_PADDING, chartWidth, chartHeight);
+            graphics.fillRect(CHART_LEFT_PADDING, CHART_TOP_PADDING, chartWidth, chartHeight);
             graphics.setColor(new Color(0xE0, 0xE0, 0xE0));
-            graphics.drawRect(CHART_PADDING, CHART_PADDING, chartWidth, chartHeight);
+            graphics.drawRect(CHART_LEFT_PADDING, CHART_TOP_PADDING, chartWidth, chartHeight);
 
             drawChartYAxisTicks(graphics, chartData);
             drawChartXAxisLabels(graphics);
@@ -688,17 +693,18 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         }
         graphics.setFont(new Font("SansSerif", Font.PLAIN, 14));
         FontMetrics metrics = graphics.getFontMetrics();
-        int chartHeight = CHART_HEIGHT - CHART_PADDING * 2;
+        int chartHeight = CHART_HEIGHT - CHART_TOP_PADDING - CHART_BOTTOM_PADDING;
         for (BigDecimal tick : chartData.yTicks()) {
             double ratio = tick.subtract(chartData.minPrice()).doubleValue()
                     / chartData.maxPrice().subtract(chartData.minPrice()).doubleValue();
-            int y = (int) Math.round(CHART_HEIGHT - CHART_PADDING - ratio * chartHeight);
+            int y = (int) Math.round(CHART_HEIGHT - CHART_BOTTOM_PADDING - ratio * chartHeight);
             graphics.setColor(new Color(0xEEEEEE));
-            graphics.drawLine(CHART_PADDING, y, CHART_WIDTH - CHART_PADDING, y);
-            String label = formatPrice(tick);
+            graphics.drawLine(CHART_LEFT_PADDING, y, CHART_WIDTH - CHART_RIGHT_PADDING, y);
+            String label = formatAxisPrice(tick);
             int labelWidth = metrics.stringWidth(label);
             graphics.setColor(new Color(0x616161));
-            graphics.drawString(label, CHART_PADDING - 8 - labelWidth, y + metrics.getAscent() / 2);
+            int labelX = Math.max(0, CHART_LEFT_PADDING - 10 - labelWidth);
+            graphics.drawString(label, labelX, y + metrics.getAscent() / 2);
         }
     }
 
@@ -708,7 +714,7 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         int[] minutes = new int[]{-20, -15, -10, -5, 0};
         for (int minute : minutes) {
             double ratio = (minute + 20) / 20.0;
-            int x = (int) Math.round(CHART_PADDING + ratio * (CHART_WIDTH - CHART_PADDING * 2));
+            int x = (int) Math.round(CHART_LEFT_PADDING + ratio * (CHART_WIDTH - CHART_LEFT_PADDING - CHART_RIGHT_PADDING));
             graphics.setColor(new Color(0x616161));
             String label = minute + "m";
             FontMetrics metrics = graphics.getFontMetrics();
@@ -722,13 +728,13 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         graphics.setColor(new Color(0x616161));
         String highLabel = "High " + formatPrice(chartData.maxPrice());
         String lowLabel = "Low " + formatPrice(chartData.minPrice());
-        graphics.drawString(highLabel, CHART_PADDING, CHART_PADDING - 10);
-        graphics.drawString(lowLabel, CHART_PADDING, CHART_HEIGHT - CHART_PADDING + 20);
+        graphics.drawString(highLabel, CHART_LEFT_PADDING, CHART_TOP_PADDING - 10);
+        graphics.drawString(lowLabel, CHART_LEFT_PADDING, CHART_HEIGHT - CHART_BOTTOM_PADDING + 20);
         if (chartData.anchorTime() != null) {
             String anchor = "As of " + formatInstant(chartData.anchorTime(), zone);
             FontMetrics metrics = graphics.getFontMetrics();
             int textWidth = metrics.stringWidth(anchor);
-            graphics.drawString(anchor, CHART_WIDTH - CHART_PADDING - textWidth, CHART_PADDING - 10);
+            graphics.drawString(anchor, CHART_WIDTH - CHART_RIGHT_PADDING - textWidth, CHART_TOP_PADDING - 10);
         }
     }
 
@@ -791,6 +797,14 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
 
     private String formatPrice(BigDecimal price) {
         return price == null ? "-" : price.toPlainString();
+    }
+
+    // y轴刻度统一保留两位小数，避免刻度文本过长影响布局
+    private String formatAxisPrice(BigDecimal price) {
+        if (price == null) {
+            return "-";
+        }
+        return price.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
     private String formatThresholdDirection(GoldThresholdAlertMessage message) {
