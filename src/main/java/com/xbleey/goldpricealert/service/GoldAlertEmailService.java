@@ -7,21 +7,34 @@ import com.xbleey.goldpricealert.model.GoldPriceSnapshot;
 import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
+import javax.imageio.ImageIO;
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 @Service
 public class GoldAlertEmailService implements GoldAlertNotifier {
@@ -33,9 +46,15 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
     private static final Duration CHART_EXPECTED_INTERVAL = Duration.ofSeconds(20);
     private static final Duration CHART_GAP_THRESHOLD = CHART_EXPECTED_INTERVAL.multipliedBy(2);
     private static final int CHART_MAX_POINTS = 60;
-    private static final int CHART_WIDTH = 600;
-    private static final int CHART_HEIGHT = 160;
-    private static final int CHART_PADDING = 24;
+    private static final int CHART_WIDTH = 900;
+    private static final int CHART_HEIGHT = 240;
+    // 预留左侧空间用于显示完整的价格刻度文本，避免被裁剪
+    private static final int CHART_LEFT_PADDING = 90;
+    private static final int CHART_RIGHT_PADDING = 36;
+    private static final int CHART_TOP_PADDING = 36;
+    private static final int CHART_BOTTOM_PADDING = 36;
+    private static final int CHART_AXIS_LABEL_HEIGHT = 60;
+    private static final int CHART_Y_TICK_COUNT = 4;
 
     private final JavaMailSender mailSender;
     private final GoldAlertMailProperties properties;
@@ -63,7 +82,8 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         if (targets == null) {
             return;
         }
-        sendEmail(targets, buildSubject(message), buildPlainText(message), buildHtmlBody(message));
+        EmailContent content = buildHtmlBodyContent(message);
+        sendEmail(targets, buildSubject(message), buildPlainText(message), content);
     }
 
     public void notifyThresholdAlert(GoldThresholdAlertMessage message) {
@@ -74,7 +94,8 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         if (targets == null) {
             return;
         }
-        sendEmail(targets, buildThresholdSubject(message), buildThresholdPlainText(message), buildThresholdHtmlBody(message));
+        EmailContent content = buildThresholdHtmlBodyContent(message);
+        sendEmail(targets, buildThresholdSubject(message), buildThresholdPlainText(message), content);
     }
 
     public void notifyApiError(GoldApiErrorMessage message) {
@@ -85,7 +106,8 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         if (targets == null) {
             return;
         }
-        sendEmail(targets, buildApiErrorSubject(), buildApiErrorPlainText(message), buildApiErrorHtmlBody(message));
+        EmailContent content = buildApiErrorHtmlBodyContent(message);
+        sendEmail(targets, buildApiErrorSubject(), buildApiErrorPlainText(message), content);
     }
 
     public void notifyApiResume(GoldApiResumeMessage message) {
@@ -96,7 +118,8 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         if (targets == null) {
             return;
         }
-        sendEmail(targets, buildApiResumeSubject(), buildApiResumePlainText(message), buildApiResumeHtmlBody(message));
+        EmailContent content = buildApiResumeHtmlBodyContent(message);
+        sendEmail(targets, buildApiResumeSubject(), buildApiResumePlainText(message), content);
     }
 
     private boolean shouldSend(GoldAlertMessage message) {
@@ -150,7 +173,7 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         if (message == null) {
             return "";
         }
-        return buildHtmlBody(message);
+        return buildHtmlBodyContent(message).html();
     }
 
     private EmailTargets resolveEmailTargets() {
@@ -167,14 +190,29 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         return new EmailTargets(sender, recipients);
     }
 
-    private void sendEmail(EmailTargets targets, String subject, String plainText, String htmlBody) {
+    private void sendEmail(EmailTargets targets, String subject, String plainText, EmailContent content) {
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, StandardCharsets.UTF_8.name());
+            boolean hasInline = content != null && !content.inlineImages().isEmpty();
+            boolean hasHtml = content != null && content.html() != null && !content.html().isBlank();
+            // 需要发送HTML正文时必须启用multipart，避免非multipart模式下设置HTML导致异常
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, hasInline || hasHtml, StandardCharsets.UTF_8.name());
             helper.setFrom(targets.sender());
             helper.setTo(targets.recipients().toArray(new String[0]));
             helper.setSubject(subject);
-            helper.setText(plainText, htmlBody);
+            String htmlBody = content == null ? "" : content.html();
+            if (hasHtml) {
+                helper.setText(plainText, htmlBody);
+            } else {
+                helper.setText(plainText, false);
+            }
+            if (hasInline) {
+                for (InlineImage inlineImage : content.inlineImages()) {
+                    helper.addInline(inlineImage.contentId(),
+                            new ByteArrayResource(inlineImage.data()),
+                            inlineImage.contentType());
+                }
+            }
             mailSender.send(mimeMessage);
         } catch (Exception ex) {
             log.warn("Failed to send alert email", ex);
@@ -296,8 +334,9 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         return builder.toString();
     }
 
-    private String buildHtmlBody(GoldAlertMessage message) {
+    private EmailContent buildHtmlBodyContent(GoldAlertMessage message) {
         StringBuilder builder = new StringBuilder();
+        List<InlineImage> inlineImages = new ArrayList<>();
         ZoneId zone = clock.getZone();
         ZoneId updatedAtZone = ZoneId.of("UTC+08:00");
         builder.append("<html><body>");
@@ -325,17 +364,20 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 .append(' ')
                 .append(escapeHtml(zone.getId()))
                 .append("</p>");
-        builder.append(buildHtmlChartSection(message.recentSnapshots(), message.alertTime(), zone));
+        HtmlSection chartSection = buildHtmlChartSection(message.recentSnapshots(), message.alertTime(), zone);
+        builder.append(chartSection.html());
+        inlineImages.addAll(chartSection.inlineImages());
         builder.append("<h3>Recent GoldPriceSnapshot (last ")
                 .append(message.recentSnapshots() == null ? 0 : message.recentSnapshots().size())
                 .append(")</h3>");
         appendHtmlTable(builder, message.recentSnapshots(), zone, updatedAtZone);
         builder.append("</body></html>");
-        return builder.toString();
+        return new EmailContent(builder.toString(), inlineImages);
     }
 
-    private String buildThresholdHtmlBody(GoldThresholdAlertMessage message) {
+    private EmailContent buildThresholdHtmlBodyContent(GoldThresholdAlertMessage message) {
         StringBuilder builder = new StringBuilder();
+        List<InlineImage> inlineImages = new ArrayList<>();
         ZoneId zone = clock.getZone();
         ZoneId updatedAtZone = ZoneId.of("UTC+08:00");
         builder.append("<html><body>");
@@ -352,17 +394,19 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         builder.append("<h3>time (UTC+8)=")
                 .append(escapeHtml(formatInstant(message == null ? null : message.alertTime(), ZoneId.of("UTC+08:00"))))
                 .append("</h3>");
-        builder.append(buildHtmlChartSection(message == null ? null : message.recentSnapshots(),
-                message == null ? null : message.alertTime(), zone));
+        HtmlSection chartSection = buildHtmlChartSection(message == null ? null : message.recentSnapshots(),
+                message == null ? null : message.alertTime(), zone);
+        builder.append(chartSection.html());
+        inlineImages.addAll(chartSection.inlineImages());
         builder.append("<h3>Recent GoldPriceSnapshot (last ")
                 .append(message == null || message.recentSnapshots() == null ? 0 : message.recentSnapshots().size())
                 .append(")</h3>");
         appendHtmlTable(builder, message == null ? null : message.recentSnapshots(), zone, updatedAtZone);
         builder.append("</body></html>");
-        return builder.toString();
+        return new EmailContent(builder.toString(), inlineImages);
     }
 
-    private String buildApiErrorHtmlBody(GoldApiErrorMessage message) {
+    private EmailContent buildApiErrorHtmlBodyContent(GoldApiErrorMessage message) {
         StringBuilder builder = new StringBuilder();
         ZoneId zone = clock.getZone();
         builder.append("<html><body>");
@@ -377,10 +421,10 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 .append(escapeHtml(formatDuration(message.downtime())))
                 .append("</span></p>");
         builder.append("</body></html>");
-        return builder.toString();
+        return new EmailContent(builder.toString(), List.of());
     }
 
-    private String buildApiResumeHtmlBody(GoldApiResumeMessage message) {
+    private EmailContent buildApiResumeHtmlBodyContent(GoldApiResumeMessage message) {
         StringBuilder builder = new StringBuilder();
         ZoneId zone = clock.getZone();
         builder.append("<html><body>");
@@ -396,7 +440,7 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 .append("</p>");
         builder.append("<p>api=").append(escapeHtml(safeValue(message.apiUrl()))).append("</p>");
         builder.append("</body></html>");
-        return builder.toString();
+        return new EmailContent(builder.toString(), List.of());
     }
 
     private void appendPlainTextTable(
@@ -472,93 +516,34 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         builder.append("</tbody></table>");
     }
 
-    private String buildHtmlChartSection(List<GoldPriceSnapshot> recentSnapshots, Instant anchorTime, ZoneId zone) {
+    private HtmlSection buildHtmlChartSection(List<GoldPriceSnapshot> recentSnapshots, Instant anchorTime, ZoneId zone) {
         StringBuilder builder = new StringBuilder();
         builder.append("<h3>Gold Price Chart (20m)</h3>");
-        builder.append(buildHtmlPriceChart(recentSnapshots, anchorTime, zone));
-        return builder.toString();
+        ChartRenderResult chartResult = buildHtmlPriceChart(recentSnapshots, anchorTime, zone);
+        builder.append(chartResult.html());
+        return new HtmlSection(builder.toString(), chartResult.inlineImages());
     }
 
-    private String buildHtmlPriceChart(List<GoldPriceSnapshot> recentSnapshots, Instant anchorTime, ZoneId zone) {
+    private ChartRenderResult buildHtmlPriceChart(List<GoldPriceSnapshot> recentSnapshots, Instant anchorTime, ZoneId zone) {
         ChartData chartData = buildChartData(recentSnapshots, anchorTime);
         if (chartData.points().isEmpty()) {
-            return "<p>chart=无可用数据</p>";
+            return new ChartRenderResult("<p>chart=无可用数据</p>", List.of());
         }
+        byte[] imageBytes = renderChartImage(chartData, zone);
+        if (imageBytes.length == 0) {
+            return new ChartRenderResult("<p>chart=无可用数据</p>", List.of());
+        }
+        String contentId = "chart-" + UUID.randomUUID();
         StringBuilder builder = new StringBuilder();
-        builder.append("<svg width=\"").append(CHART_WIDTH)
-                .append("\" height=\"").append(CHART_HEIGHT + 40)
-                .append("\" viewBox=\"0 0 ").append(CHART_WIDTH).append(" ")
-                .append(CHART_HEIGHT + 40)
-                .append("\" xmlns=\"http://www.w3.org/2000/svg\">");
-        builder.append("<rect x=\"0\" y=\"0\" width=\"").append(CHART_WIDTH)
-                .append("\" height=\"").append(CHART_HEIGHT + 40)
-                .append("\" fill=\"#ffffff\"/>");
-        builder.append("<rect x=\"").append(CHART_PADDING)
-                .append("\" y=\"").append(CHART_PADDING)
-                .append("\" width=\"").append(CHART_WIDTH - CHART_PADDING * 2)
-                .append("\" height=\"").append(CHART_HEIGHT - CHART_PADDING)
-                .append("\" fill=\"#fafafa\" stroke=\"#e0e0e0\"/>");
-        appendChartAxisLabels(builder);
-        appendChartPriceRange(builder, chartData, zone);
-        appendChartSegments(builder, chartData);
-        builder.append("</svg>");
-        return builder.toString();
-    }
-
-    private void appendChartAxisLabels(StringBuilder builder) {
-        int baseY = CHART_HEIGHT + 20;
-        int[] minutes = new int[]{-20, -15, -10, -5, 0};
-        for (int minute : minutes) {
-            double ratio = (minute + 20) / 20.0;
-            int x = (int) Math.round(CHART_PADDING + ratio * (CHART_WIDTH - CHART_PADDING * 2));
-            builder.append("<text x=\"").append(x).append("\" y=\"").append(baseY)
-                    .append("\" fill=\"#616161\" font-size=\"12\" text-anchor=\"middle\">")
-                    .append(minute).append("m</text>");
-        }
-    }
-
-    private void appendChartPriceRange(StringBuilder builder, ChartData chartData, ZoneId zone) {
-        String minValue = escapeHtml(formatPrice(chartData.minPrice()));
-        String maxValue = escapeHtml(formatPrice(chartData.maxPrice()));
-        builder.append("<text x=\"").append(CHART_PADDING)
-                .append("\" y=\"").append(CHART_PADDING - 6)
-                .append("\" fill=\"#616161\" font-size=\"12\">")
-                .append("高 ").append(maxValue)
-                .append("</text>");
-        builder.append("<text x=\"").append(CHART_PADDING)
-                .append("\" y=\"").append(CHART_HEIGHT - 6)
-                .append("\" fill=\"#616161\" font-size=\"12\">")
-                .append("低 ").append(minValue)
-                .append("</text>");
-        if (chartData.anchorTime() != null) {
-            builder.append("<text x=\"").append(CHART_WIDTH - CHART_PADDING)
-                    .append("\" y=\"").append(CHART_PADDING - 6)
-                    .append("\" fill=\"#616161\" font-size=\"12\" text-anchor=\"end\">")
-                    .append("截至 ")
-                    .append(escapeHtml(formatInstant(chartData.anchorTime(), zone)))
-                    .append("</text>");
-        }
-    }
-
-    private void appendChartSegments(StringBuilder builder, ChartData chartData) {
-        for (List<ChartPoint> segment : chartData.points()) {
-            if (segment.size() < 2) {
-                if (!segment.isEmpty()) {
-                    ChartPoint point = segment.getFirst();
-                    builder.append("<circle cx=\"").append(point.x())
-                            .append("\" cy=\"").append(point.y())
-                            .append("\" r=\"2\" fill=\"#1976d2\"/>");
-                }
-                continue;
-            }
-            StringBuilder polyline = new StringBuilder();
-            for (ChartPoint point : segment) {
-                polyline.append(point.x()).append(',').append(point.y()).append(' ');
-            }
-            builder.append("<polyline fill=\"none\" stroke=\"#1976d2\" stroke-width=\"2\" points=\"")
-                    .append(polyline)
-                    .append("\"/>");
-        }
+        builder.append("<img src=\"cid:")
+                .append(contentId)
+                .append("\" width=\"")
+                .append(CHART_WIDTH)
+                .append("\" height=\"")
+                .append(CHART_HEIGHT + CHART_AXIS_LABEL_HEIGHT)
+                .append("\" alt=\"Gold price chart\" style=\"display:block;border:0;\"/>");
+        InlineImage inlineImage = new InlineImage(contentId, imageBytes, "image/png");
+        return new ChartRenderResult(builder.toString(), List.of(inlineImage));
     }
 
     private String buildPlainTextChart(List<GoldPriceSnapshot> recentSnapshots, Instant anchorTime) {
@@ -588,7 +573,7 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
 
     private ChartData buildChartData(List<GoldPriceSnapshot> recentSnapshots, Instant anchorTime) {
         if (recentSnapshots == null || recentSnapshots.isEmpty()) {
-            return new ChartData(List.of(), BigDecimal.ZERO, BigDecimal.ZERO, anchorTime);
+            return new ChartData(List.of(), BigDecimal.ZERO, BigDecimal.ZERO, anchorTime, List.of());
         }
         Instant effectiveAnchor = anchorTime == null ? recentSnapshots.getFirst().fetchedAt() : anchorTime;
         Instant windowStart = effectiveAnchor.minus(CHART_WINDOW);
@@ -600,7 +585,7 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 .sorted((a, b) -> a.fetchedAt().compareTo(b.fetchedAt()))
                 .toList();
         if (ordered.isEmpty()) {
-            return new ChartData(List.of(), BigDecimal.ZERO, BigDecimal.ZERO, effectiveAnchor);
+            return new ChartData(List.of(), BigDecimal.ZERO, BigDecimal.ZERO, effectiveAnchor, List.of());
         }
         BigDecimal minPrice = null;
         BigDecimal maxPrice = null;
@@ -617,7 +602,7 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
             }
         }
         if (minPrice == null || maxPrice == null) {
-            return new ChartData(List.of(), BigDecimal.ZERO, BigDecimal.ZERO, effectiveAnchor);
+            return new ChartData(List.of(), BigDecimal.ZERO, BigDecimal.ZERO, effectiveAnchor, List.of());
         }
         if (minPrice.compareTo(maxPrice) == 0) {
             minPrice = minPrice.subtract(BigDecimal.ONE);
@@ -643,10 +628,11 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
             }
             double ratio = (double) Duration.between(windowStart, fetchedAt).toMillis()
                     / (double) CHART_WINDOW.toMillis();
-            int x = (int) Math.round(CHART_PADDING + ratio * (CHART_WIDTH - CHART_PADDING * 2));
+            int x = (int) Math.round(CHART_LEFT_PADDING + ratio * (CHART_WIDTH - CHART_LEFT_PADDING - CHART_RIGHT_PADDING));
             double priceRatio = price.subtract(minPrice).doubleValue()
                     / maxPrice.subtract(minPrice).doubleValue();
-            int y = (int) Math.round(CHART_HEIGHT - CHART_PADDING - priceRatio * (CHART_HEIGHT - CHART_PADDING * 2));
+            int y = (int) Math.round(CHART_HEIGHT - CHART_BOTTOM_PADDING
+                    - priceRatio * (CHART_HEIGHT - CHART_TOP_PADDING - CHART_BOTTOM_PADDING));
             int index = (int) Math.round(ratio * (CHART_MAX_POINTS - 1));
             current.add(new ChartPoint(x, y, index));
             previousTime = fetchedAt;
@@ -654,13 +640,145 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         if (!current.isEmpty()) {
             segments.add(List.copyOf(current));
         }
-        return new ChartData(segments, minPrice, maxPrice, effectiveAnchor);
+        List<BigDecimal> yTicks = buildChartTicks(minPrice, maxPrice);
+        return new ChartData(segments, minPrice, maxPrice, effectiveAnchor, yTicks);
+    }
+
+    private List<BigDecimal> buildChartTicks(BigDecimal minPrice, BigDecimal maxPrice) {
+        if (minPrice == null || maxPrice == null) {
+            return List.of();
+        }
+        BigDecimal range = maxPrice.subtract(minPrice);
+        if (range.compareTo(BigDecimal.ZERO) <= 0) {
+            return List.of();
+        }
+        List<BigDecimal> ticks = new ArrayList<>();
+        for (int i = 1; i <= CHART_Y_TICK_COUNT; i++) {
+            BigDecimal ratio = BigDecimal.valueOf(i).divide(BigDecimal.valueOf(CHART_Y_TICK_COUNT + 1L), 8, RoundingMode.HALF_UP);
+            ticks.add(minPrice.add(range.multiply(ratio)));
+        }
+        return List.copyOf(ticks);
+    }
+
+    private byte[] renderChartImage(ChartData chartData, ZoneId zone) {
+        int imageHeight = CHART_HEIGHT + CHART_AXIS_LABEL_HEIGHT;
+        BufferedImage image = new BufferedImage(CHART_WIDTH, imageHeight, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = image.createGraphics();
+        try {
+            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            graphics.setColor(Color.WHITE);
+            graphics.fillRect(0, 0, CHART_WIDTH, imageHeight);
+
+            int chartWidth = CHART_WIDTH - CHART_LEFT_PADDING - CHART_RIGHT_PADDING;
+            int chartHeight = CHART_HEIGHT - CHART_TOP_PADDING - CHART_BOTTOM_PADDING;
+            graphics.setColor(new Color(0xFA, 0xFA, 0xFA));
+            graphics.fillRect(CHART_LEFT_PADDING, CHART_TOP_PADDING, chartWidth, chartHeight);
+            graphics.setColor(new Color(0xE0, 0xE0, 0xE0));
+            graphics.drawRect(CHART_LEFT_PADDING, CHART_TOP_PADDING, chartWidth, chartHeight);
+
+            drawChartYAxisTicks(graphics, chartData);
+            drawChartXAxisLabels(graphics);
+            drawChartHighLowLabels(graphics, chartData, zone);
+            drawChartSeries(graphics, chartData);
+        } finally {
+            graphics.dispose();
+        }
+        return writePng(image);
+    }
+
+    private void drawChartYAxisTicks(Graphics2D graphics, ChartData chartData) {
+        if (chartData.yTicks().isEmpty()) {
+            return;
+        }
+        graphics.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        FontMetrics metrics = graphics.getFontMetrics();
+        int chartHeight = CHART_HEIGHT - CHART_TOP_PADDING - CHART_BOTTOM_PADDING;
+        for (BigDecimal tick : chartData.yTicks()) {
+            double ratio = tick.subtract(chartData.minPrice()).doubleValue()
+                    / chartData.maxPrice().subtract(chartData.minPrice()).doubleValue();
+            int y = (int) Math.round(CHART_HEIGHT - CHART_BOTTOM_PADDING - ratio * chartHeight);
+            graphics.setColor(new Color(0xEEEEEE));
+            graphics.drawLine(CHART_LEFT_PADDING, y, CHART_WIDTH - CHART_RIGHT_PADDING, y);
+            String label = formatAxisPrice(tick);
+            int labelWidth = metrics.stringWidth(label);
+            graphics.setColor(new Color(0x616161));
+            int labelX = Math.max(0, CHART_LEFT_PADDING - 10 - labelWidth);
+            graphics.drawString(label, labelX, y + metrics.getAscent() / 2);
+        }
+    }
+
+    private void drawChartXAxisLabels(Graphics2D graphics) {
+        graphics.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        int baseY = CHART_HEIGHT + 30;
+        int[] minutes = new int[]{-20, -15, -10, -5, 0};
+        for (int minute : minutes) {
+            double ratio = (minute + 20) / 20.0;
+            int x = (int) Math.round(CHART_LEFT_PADDING + ratio * (CHART_WIDTH - CHART_LEFT_PADDING - CHART_RIGHT_PADDING));
+            graphics.setColor(new Color(0x616161));
+            String label = minute + "m";
+            FontMetrics metrics = graphics.getFontMetrics();
+            int labelWidth = metrics.stringWidth(label);
+            graphics.drawString(label, x - labelWidth / 2, baseY);
+        }
+    }
+
+    private void drawChartHighLowLabels(Graphics2D graphics, ChartData chartData, ZoneId zone) {
+        graphics.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        graphics.setColor(new Color(0x616161));
+        String highLabel = "High " + formatPrice(chartData.maxPrice());
+        String lowLabel = "Low " + formatPrice(chartData.minPrice());
+        graphics.drawString(highLabel, CHART_LEFT_PADDING, CHART_TOP_PADDING - 10);
+        graphics.drawString(lowLabel, CHART_LEFT_PADDING, CHART_HEIGHT - CHART_BOTTOM_PADDING + 20);
+        if (chartData.anchorTime() != null) {
+            String anchor = "As of " + formatInstant(chartData.anchorTime(), zone);
+            FontMetrics metrics = graphics.getFontMetrics();
+            int textWidth = metrics.stringWidth(anchor);
+            graphics.drawString(anchor, CHART_WIDTH - CHART_RIGHT_PADDING - textWidth, CHART_TOP_PADDING - 10);
+        }
+    }
+
+    private void drawChartSeries(Graphics2D graphics, ChartData chartData) {
+        graphics.setColor(new Color(0x1976D2));
+        graphics.setStroke(new BasicStroke(2f));
+        for (List<ChartPoint> segment : chartData.points()) {
+            if (segment.size() < 2) {
+                if (!segment.isEmpty()) {
+                    ChartPoint point = segment.getFirst();
+                    graphics.fillOval(point.x() - 3, point.y() - 3, 6, 6);
+                }
+                continue;
+            }
+            ChartPoint previous = null;
+            for (ChartPoint point : segment) {
+                if (previous != null) {
+                    graphics.drawLine(previous.x(), previous.y(), point.x(), point.y());
+                }
+                previous = point;
+            }
+        }
+    }
+
+    private byte[] writePng(BufferedImage image) {
+        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+            ImageIO.write(image, "png", outputStream);
+            return outputStream.toByteArray();
+        } catch (Exception ex) {
+            log.warn("Failed to render chart image", ex);
+            return new byte[0];
+        }
     }
 
     private record ChartPoint(int x, int y, int index) {
     }
 
-    private record ChartData(List<List<ChartPoint>> points, BigDecimal minPrice, BigDecimal maxPrice, Instant anchorTime) {
+    private record ChartData(
+            List<List<ChartPoint>> points,
+            BigDecimal minPrice,
+            BigDecimal maxPrice,
+            Instant anchorTime,
+            List<BigDecimal> yTicks
+    ) {
     }
 
     private String formatInstant(Instant instant, ZoneId zone) {
@@ -679,6 +797,14 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
 
     private String formatPrice(BigDecimal price) {
         return price == null ? "-" : price.toPlainString();
+    }
+
+    // y轴刻度统一保留两位小数，避免刻度文本过长影响布局
+    private String formatAxisPrice(BigDecimal price) {
+        if (price == null) {
+            return "-";
+        }
+        return price.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
     private String formatThresholdDirection(GoldThresholdAlertMessage message) {
@@ -734,6 +860,18 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
     }
 
     private record EmailTargets(String sender, List<String> recipients) {
+    }
+
+    private record InlineImage(String contentId, byte[] data, String contentType) {
+    }
+
+    private record EmailContent(String html, List<InlineImage> inlineImages) {
+    }
+
+    private record ChartRenderResult(String html, List<InlineImage> inlineImages) {
+    }
+
+    private record HtmlSection(String html, List<InlineImage> inlineImages) {
     }
 
 }
