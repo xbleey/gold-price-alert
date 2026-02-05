@@ -39,7 +39,7 @@ public class TestController {
 
     @PostMapping("/email")
     public String sendTestEmail() {
-        List<GoldPriceSnapshot> snapshots = history.getRecent(20);
+        List<GoldPriceSnapshot> snapshots = history.getRecent(60);
         if (snapshots.isEmpty()) {
             return "No snapshots found in database. Fetch prices first.";
         }

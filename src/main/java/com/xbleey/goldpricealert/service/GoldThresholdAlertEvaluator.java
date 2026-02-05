@@ -55,7 +55,7 @@ public class GoldThresholdAlertEvaluator {
                 latest.price(),
                 direction,
                 latest.fetchedAt(),
-                history.getRecent(20)
+                history.getRecent(60)
         );
         boolean triggered = thresholdStore.markTriggered(latest.fetchedAt(), latest.price());
         if (!triggered) {
