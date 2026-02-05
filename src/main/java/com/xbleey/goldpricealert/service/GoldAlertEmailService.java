@@ -190,12 +190,18 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             boolean hasInline = content != null && !content.inlineImages().isEmpty();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, hasInline, StandardCharsets.UTF_8.name());
+            String htmlBody = content == null ? "" : content.html();
+            boolean hasHtml = htmlBody != null && !htmlBody.isBlank();
+            boolean multipart = hasInline || hasHtml;
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, multipart, StandardCharsets.UTF_8.name());
             helper.setFrom(targets.sender());
             helper.setTo(targets.recipients().toArray(new String[0]));
             helper.setSubject(subject);
-            String htmlBody = content == null ? "" : content.html();
-            helper.setText(plainText, htmlBody);
+            if (hasHtml) {
+                helper.setText(plainText, htmlBody);
+            } else {
+                helper.setText(plainText);
+            }
             if (hasInline) {
                 for (InlineImage inlineImage : content.inlineImages()) {
                     helper.addInline(inlineImage.contentId(),
