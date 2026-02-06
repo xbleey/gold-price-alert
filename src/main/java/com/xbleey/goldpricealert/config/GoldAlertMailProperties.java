@@ -1,7 +1,8 @@
 package com.xbleey.goldpricealert.config;
 
-import lombok.Data;
+import com.xbleey.goldpricealert.enums.GoldAlertLevel;
 import jakarta.annotation.PostConstruct;
+import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -10,8 +11,6 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
-
-import com.xbleey.goldpricealert.enums.GoldAlertLevel;
 
 @Data
 @Component

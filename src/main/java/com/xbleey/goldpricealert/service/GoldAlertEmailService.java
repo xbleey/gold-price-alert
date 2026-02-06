@@ -13,12 +13,7 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
 import javax.imageio.ImageIO;
-import java.awt.BasicStroke;
-import java.awt.Color;
-import java.awt.Font;
-import java.awt.FontMetrics;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
@@ -534,16 +529,15 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
             return new ChartRenderResult("<p>chart=无可用数据</p>", List.of());
         }
         String contentId = "chart-" + UUID.randomUUID();
-        StringBuilder builder = new StringBuilder();
-        builder.append("<img src=\"cid:")
-                .append(contentId)
-                .append("\" width=\"")
-                .append(CHART_WIDTH)
-                .append("\" height=\"")
-                .append(CHART_HEIGHT + CHART_AXIS_LABEL_HEIGHT)
-                .append("\" alt=\"Gold price chart\" style=\"display:block;border:0;\"/>");
+        String builder = "<img src=\"cid:" +
+                contentId +
+                "\" width=\"" +
+                CHART_WIDTH +
+                "\" height=\"" +
+                (CHART_HEIGHT + CHART_AXIS_LABEL_HEIGHT) +
+                "\" alt=\"Gold price chart\" style=\"display:block;border:0;\"/>";
         InlineImage inlineImage = new InlineImage(contentId, imageBytes, "image/png");
-        return new ChartRenderResult(builder.toString(), List.of(inlineImage));
+        return new ChartRenderResult(builder, List.of(inlineImage));
     }
 
     private String buildPlainTextChart(List<GoldPriceSnapshot> recentSnapshots, Instant anchorTime) {
@@ -562,13 +556,12 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 }
             }
         }
-        StringBuilder builder = new StringBuilder();
-        builder.append('[').append(new String(sparkline)).append(']').append('\n');
-        builder.append("轴: -20m -15m -10m -5m 0").append('\n');
-        builder.append("价格: ").append(formatPrice(chartData.minPrice()))
-                .append(" ~ ").append(formatPrice(chartData.maxPrice()))
-                .append('\n');
-        return builder.toString();
+        String builder = '[' + new String(sparkline) + ']' + '\n' +
+                "轴: -20m -15m -10m -5m 0" + '\n' +
+                "价格: " + formatPrice(chartData.minPrice()) +
+                " ~ " + formatPrice(chartData.maxPrice()) +
+                '\n';
+        return builder;
     }
 
     private ChartData buildChartData(List<GoldPriceSnapshot> recentSnapshots, Instant anchorTime) {

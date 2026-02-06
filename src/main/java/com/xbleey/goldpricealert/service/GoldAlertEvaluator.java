@@ -140,25 +140,7 @@ public class GoldAlertEvaluator {
                 + " time=" + alertTime;
     }
 
-    private static final class AlertCandidate {
-        private final GoldAlertLevel level;
-        private final Duration window;
-        private final BigDecimal baselinePrice;
-        private final BigDecimal changePercent;
-        private final BigDecimal absChangePercent;
-
-        private AlertCandidate(
-                GoldAlertLevel level,
-                Duration window,
-                BigDecimal baselinePrice,
-                BigDecimal changePercent,
-                BigDecimal absChangePercent
-        ) {
-            this.level = level;
-            this.window = window;
-            this.baselinePrice = baselinePrice;
-            this.changePercent = changePercent;
-            this.absChangePercent = absChangePercent;
-        }
+    private record AlertCandidate(GoldAlertLevel level, Duration window, BigDecimal baselinePrice,
+                                  BigDecimal changePercent, BigDecimal absChangePercent) {
     }
 }
