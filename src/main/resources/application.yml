@@ -33,7 +33,7 @@ mybatis-plus:
     map-underscore-to-camel-case: true
 
 server:
-  port: 80
+  port: 8080
 
 gold:
   api-url: https://api.gold-api.com/price/XAU
