@@ -9,6 +9,13 @@
 4. 若多个等级同时满足，选择“绝对涨跌幅最大”的等级作为本次告警。
 5. 邮件发送受 `min-level` 与 per-level 冷却时间控制；若等级升级则立即发送。
 
+## 健康探针接口
+- `GET /health/live`：存活探针，返回应用进程是否存活（`200` + `status=UP`）。
+- `GET /health/ready`：就绪探针，检查数据库与 Redis 连通性。
+  - 检查通过返回 `200` + `status=UP`。
+  - 任一依赖不可用返回 `503` + `status=DOWN`。
+- `GET /health`：等价于 `GET /health/ready`，方便通用监控直接接入。
+
 ## 告警等级（GoldAlertLevel）
 | 等级 | 观察窗口 | 触发阈值（绝对涨跌幅） |
 | --- | --- | --- |
