@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xbleey.goldpricealert.config.GoldAlertWindowProperties;
 import com.xbleey.goldpricealert.config.GoldProperties;
 import com.xbleey.goldpricealert.enums.GoldAlertLevel;
+import com.xbleey.goldpricealert.repository.GoldAlertHistoryStore;
 import com.xbleey.goldpricealert.support.InMemoryGoldPriceSnapshotStore;
 import okhttp3.OkHttpClient;
 import okhttp3.mockwebserver.MockResponse;
@@ -94,7 +95,8 @@ class GoldPriceFetcherTest {
                 history,
                 clock,
                 GoldAlertNotifier.noop(),
-                windowProperties()
+                windowProperties(),
+                GoldAlertHistoryStore.noop()
         );
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 

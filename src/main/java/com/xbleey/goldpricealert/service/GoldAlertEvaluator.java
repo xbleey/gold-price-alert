@@ -2,7 +2,9 @@ package com.xbleey.goldpricealert.service;
 
 import com.xbleey.goldpricealert.config.GoldAlertWindowProperties;
 import com.xbleey.goldpricealert.enums.GoldAlertLevel;
+import com.xbleey.goldpricealert.model.GoldAlertHistory;
 import com.xbleey.goldpricealert.model.GoldPriceSnapshot;
+import com.xbleey.goldpricealert.repository.GoldAlertHistoryStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -13,6 +15,8 @@ import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
@@ -28,17 +32,20 @@ public class GoldAlertEvaluator {
     private final Clock clock;
     private final GoldAlertNotifier alertNotifier;
     private final GoldAlertWindowProperties windowProperties;
+    private final GoldAlertHistoryStore alertHistoryStore;
 
     public GoldAlertEvaluator(
             GoldPriceHistory history,
             Clock clock,
             GoldAlertNotifier alertNotifier,
-            GoldAlertWindowProperties windowProperties
+            GoldAlertWindowProperties windowProperties,
+            GoldAlertHistoryStore alertHistoryStore
     ) {
         this.history = history;
         this.clock = clock;
         this.alertNotifier = alertNotifier == null ? GoldAlertNotifier.noop() : alertNotifier;
         this.windowProperties = windowProperties;
+        this.alertHistoryStore = alertHistoryStore == null ? GoldAlertHistoryStore.noop() : alertHistoryStore;
     }
 
     public boolean evaluate(GoldPriceSnapshot latest) {
@@ -82,7 +89,7 @@ public class GoldAlertEvaluator {
             if (log.isWarnEnabled()) {
                 log.warn(alertMessage);
             }
-            alertNotifier.notifyAlert(new GoldAlertMessage(
+            GoldAlertMessage message = new GoldAlertMessage(
                     bestCandidate.level,
                     alertMessage,
                     latest.fetchedAt(),
@@ -92,10 +99,32 @@ public class GoldAlertEvaluator {
                     bestCandidate.baselinePrice,
                     latest.price(),
                     history.getRecent(60)
-            ));
+            );
+            persistAlertHistory(message);
+            alertNotifier.notifyAlert(message);
             return true;
         }
         return false;
+    }
+
+    private void persistAlertHistory(GoldAlertMessage message) {
+        if (message == null) {
+            return;
+        }
+        Instant alertTime = message.alertTime() == null ? Instant.now(clock) : message.alertTime();
+        GoldAlertHistory record = new GoldAlertHistory();
+        record.setAlertLevel(message.level() == null ? null : message.level().getLevelName());
+        record.setAlertTimeUtc(alertTime);
+        record.setAlertTimeBeijing(LocalDateTime.ofInstant(alertTime, ZoneId.of("Asia/Shanghai")));
+        record.setThresholdPercent(message.thresholdPercent());
+        record.setChangePercent(message.changePercent());
+        record.setBaselinePrice(message.baselinePrice());
+        record.setLatestPrice(message.latestPrice());
+        try {
+            alertHistoryStore.save(record);
+        } catch (Exception ex) {
+            log.warn("Failed to persist gold alert history", ex);
+        }
     }
 
     private String formatPercent(BigDecimal value) {

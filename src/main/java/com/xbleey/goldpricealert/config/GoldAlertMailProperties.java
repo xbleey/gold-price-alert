@@ -20,7 +20,7 @@ public class GoldAlertMailProperties {
 
     private String sender;
     private List<String> recipients = new ArrayList<>();
-    private GoldAlertLevel minLevel = GoldAlertLevel.MINOR_LEVEL;
+    private GoldAlertLevel minLevel = GoldAlertLevel.MODERATE_LEVEL;
     private Map<GoldAlertLevel, Duration> cooldowns = new EnumMap<>(GoldAlertLevel.class);
 
     public Duration cooldownFor(GoldAlertLevel level) {
