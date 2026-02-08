@@ -29,22 +29,22 @@ public class GoldThresholdStore {
     }
 
     public Optional<BigDecimal> getThreshold() {
-        return getActiveRecord().map(GoldThresholdHistory::getThreshold);
-    }
-
-    public Optional<GoldThresholdHistory> getActiveRecord() {
-        Optional<GoldThresholdHistory> record = historyStore.findLatestPending();
-        if (record.isPresent()) {
-            cacheThreshold(record.get().getThreshold());
-        } else {
-            clearCache();
+        Optional<BigDecimal> cached = readThresholdFromCache();
+        if (cached.isPresent()) {
+            return cached;
         }
-        return record;
+        // Redis 无数据时回源数据库，并回写缓存用于后续读取
+        Optional<GoldThresholdHistory> record = historyStore.findLatestPending();
+        record.ifPresent(history -> cacheThreshold(history.getThreshold()));
+        return record.map(GoldThresholdHistory::getThreshold);
     }
 
     public BigDecimal setThreshold(BigDecimal threshold) {
         if (threshold == null) {
             throw new IllegalArgumentException("threshold must not be null");
+        }
+        if (threshold.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("threshold must be >= 0");
         }
         Instant now = clock.instant();
         Optional<GoldThresholdHistory> latest = historyStore.findLatest();
@@ -90,6 +90,19 @@ public class GoldThresholdStore {
             redisTemplate.opsForValue().set(THRESHOLD_KEY, threshold.toPlainString());
         } catch (Exception ex) {
             log.warn("Failed to cache threshold to redis", ex);
+        }
+    }
+
+    private Optional<BigDecimal> readThresholdFromCache() {
+        try {
+            String cached = redisTemplate.opsForValue().get(THRESHOLD_KEY);
+            if (cached == null || cached.isBlank()) {
+                return Optional.empty();
+            }
+            return Optional.of(new BigDecimal(cached.trim()));
+        } catch (Exception ex) {
+            log.warn("Failed to read threshold from redis", ex);
+            return Optional.empty();
         }
     }
 

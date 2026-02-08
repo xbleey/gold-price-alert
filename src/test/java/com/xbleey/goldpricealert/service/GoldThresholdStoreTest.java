@@ -14,6 +14,7 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -27,14 +28,17 @@ class GoldThresholdStoreTest {
     @Test
     void getThresholdReturnsEmptyWhenNoPendingRecord() {
         StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        ValueOperations<String, String> ops = mock(ValueOperations.class);
         GoldThresholdHistoryStore historyStore = mock(GoldThresholdHistoryStore.class);
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         when(historyStore.findLatestPending()).thenReturn(Optional.empty());
+        when(redisTemplate.opsForValue()).thenReturn(ops);
+        when(ops.get("gold:alert:threshold")).thenReturn(null);
 
         GoldThresholdStore store = new GoldThresholdStore(redisTemplate, historyStore, clock);
 
         assertThat(store.getThreshold()).isEmpty();
-        verify(redisTemplate).delete("gold:alert:threshold");
+        verify(historyStore).findLatestPending();
     }
 
     @Test
@@ -108,6 +112,18 @@ class GoldThresholdStoreTest {
         assertThat(saved.getThreshold()).isEqualByComparingTo("4700");
         assertThat(saved.getStatus()).isEqualTo(GoldThresholdHistory.STATUS_PENDING);
         verify(ops).set("gold:alert:threshold", "4700");
+    }
+
+    @Test
+    void setThresholdRejectsNegativeValue() {
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        GoldThresholdHistoryStore historyStore = mock(GoldThresholdHistoryStore.class);
+        Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        GoldThresholdStore store = new GoldThresholdStore(redisTemplate, historyStore, clock);
+
+        assertThatThrownBy(() -> store.setThreshold(new BigDecimal("-1")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(">= 0");
     }
 
     @Test
