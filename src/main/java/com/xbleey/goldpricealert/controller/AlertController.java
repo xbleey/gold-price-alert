@@ -2,6 +2,7 @@ package com.xbleey.goldpricealert.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.xbleey.goldpricealert.enums.GoldAlertLevel;
 import com.xbleey.goldpricealert.mapper.GoldAlertHistoryMapper;
 import com.xbleey.goldpricealert.model.GoldAlertHistory;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -31,7 +33,7 @@ public class AlertController {
             @RequestParam(name = "alertLevel", required = false) List<String> alertLevels
     ) {
         long safePageNum = Math.max(1L, pageNum);
-        long safePageSize = Math.min(Math.max(1L, pageSize), 200L);
+        long safePageSize = Math.clamp(pageSize, 1L, 200L);
         Page<GoldAlertHistory> page = Page.of(safePageNum, safePageSize);
 
         LambdaQueryWrapper<GoldAlertHistory> wrapper = new LambdaQueryWrapper<>();
@@ -64,7 +66,7 @@ public class AlertController {
             for (String part : level.split(",")) {
                 String trimmed = part.trim();
                 if (!trimmed.isEmpty()) {
-                    normalized.add(trimmed);
+                    normalized.add(resolveAlertLevel(trimmed));
                 }
             }
         }
@@ -72,5 +74,22 @@ public class AlertController {
             return List.of();
         }
         return List.copyOf(normalized);
+    }
+
+    private String resolveAlertLevel(String rawLevel) {
+        String normalizedInput = rawLevel.trim();
+        if (normalizedInput.isEmpty()) {
+            return normalizedInput;
+        }
+
+        String upperInput = normalizedInput.toUpperCase(Locale.ROOT);
+        for (GoldAlertLevel level : GoldAlertLevel.values()) {
+            if (level.name().equals(upperInput)
+                    || level.getLevelName().equalsIgnoreCase(normalizedInput)) {
+                return level.getLevelName();
+            }
+        }
+
+        return normalizedInput;
     }
 }
