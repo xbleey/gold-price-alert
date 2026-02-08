@@ -11,6 +11,8 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
@@ -50,19 +52,34 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
     private static final int CHART_BOTTOM_PADDING = 36;
     private static final int CHART_AXIS_LABEL_HEIGHT = 60;
     private static final int CHART_Y_TICK_COUNT = 4;
+    private static final String MAIL_LAST_SENT_AT_KEY = "gold:alert:mail:lastSentAt";
+    private static final String MAIL_LAST_SENT_LEVEL_KEY = "gold:alert:mail:lastSentLevel";
+    private static final String MAIL_LAST_SENT_AT_LEVEL_PREFIX = "gold:alert:mail:lastSentAt:level:";
 
     private final JavaMailSender mailSender;
     private final GoldAlertMailProperties properties;
     private final Clock clock;
+    private final StringRedisTemplate redisTemplate;
     private final Object sendLock = new Object();
     private final Map<GoldAlertLevel, Instant> lastSentAtByLevel = new EnumMap<>(GoldAlertLevel.class);
     private Instant lastSentAt;
     private GoldAlertLevel lastSentLevel;
 
-    public GoldAlertEmailService(JavaMailSender mailSender, GoldAlertMailProperties properties, Clock clock) {
+    @Autowired
+    public GoldAlertEmailService(
+            JavaMailSender mailSender,
+            GoldAlertMailProperties properties,
+            Clock clock,
+            StringRedisTemplate redisTemplate
+    ) {
         this.mailSender = mailSender;
         this.properties = properties;
         this.clock = clock;
+        this.redisTemplate = redisTemplate;
+    }
+
+    public GoldAlertEmailService(JavaMailSender mailSender, GoldAlertMailProperties properties, Clock clock) {
+        this(mailSender, properties, clock, null);
     }
 
     @Override
@@ -134,9 +151,11 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
     private boolean canSendWithCooldown(GoldAlertMessage message) {
         Instant now = message.alertTime() == null ? Instant.now(clock) : message.alertTime();
         synchronized (sendLock) {
-            boolean isLevelUp = lastSentLevel == null
-                    || message.level().ordinal() > lastSentLevel.ordinal();
-            if (isLevelUp || lastSentAt == null) {
+            GoldAlertLevel currentLastLevel = resolveLastSentLevel();
+            Instant currentLastAt = resolveLastSentAt();
+            boolean isLevelUp = currentLastLevel == null
+                    || message.level().ordinal() > currentLastLevel.ordinal();
+            if (isLevelUp || currentLastAt == null) {
                 recordSent(message.level(), now);
                 return true;
             }
@@ -145,8 +164,8 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 recordSent(message.level(), now);
                 return true;
             }
-            Instant lastAtForLevel = lastSentAtByLevel.get(message.level());
-            Instant baseline = lastAtForLevel == null ? lastSentAt : lastAtForLevel;
+            Instant lastAtForLevel = resolveLastSentAtForLevel(message.level());
+            Instant baseline = lastAtForLevel == null ? currentLastAt : lastAtForLevel;
             Duration elapsed = Duration.between(baseline, now);
             if (elapsed.compareTo(cooldown) >= 0) {
                 recordSent(message.level(), now);
@@ -161,6 +180,67 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         lastSentLevel = level;
         if (level != null) {
             lastSentAtByLevel.put(level, now);
+        }
+        // 写入 Redis，确保多实例共享冷却状态
+        if (redisTemplate == null || now == null) {
+            return;
+        }
+        try {
+            String epochMillis = String.valueOf(now.toEpochMilli());
+            redisTemplate.opsForValue().set(MAIL_LAST_SENT_AT_KEY, epochMillis);
+            if (level != null) {
+                redisTemplate.opsForValue().set(MAIL_LAST_SENT_LEVEL_KEY, level.name());
+                redisTemplate.opsForValue().set(MAIL_LAST_SENT_AT_LEVEL_PREFIX + level.name(), epochMillis);
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to persist mail cooldown state to redis", ex);
+        }
+    }
+
+    private Instant resolveLastSentAt() {
+        if (redisTemplate == null) {
+            return lastSentAt;
+        }
+        Instant cached = readInstantFromRedis(MAIL_LAST_SENT_AT_KEY);
+        return cached != null ? cached : lastSentAt;
+    }
+
+    private GoldAlertLevel resolveLastSentLevel() {
+        if (redisTemplate == null) {
+            return lastSentLevel;
+        }
+        try {
+            String cached = redisTemplate.opsForValue().get(MAIL_LAST_SENT_LEVEL_KEY);
+            if (cached != null && !cached.isBlank()) {
+                return GoldAlertLevel.valueOf(cached.trim());
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to read mail cooldown level from redis", ex);
+        }
+        return lastSentLevel;
+    }
+
+    private Instant resolveLastSentAtForLevel(GoldAlertLevel level) {
+        if (level == null) {
+            return null;
+        }
+        if (redisTemplate == null) {
+            return lastSentAtByLevel.get(level);
+        }
+        Instant cached = readInstantFromRedis(MAIL_LAST_SENT_AT_LEVEL_PREFIX + level.name());
+        return cached != null ? cached : lastSentAtByLevel.get(level);
+    }
+
+    private Instant readInstantFromRedis(String key) {
+        try {
+            String cached = redisTemplate.opsForValue().get(key);
+            if (cached == null || cached.isBlank()) {
+                return null;
+            }
+            return Instant.ofEpochMilli(Long.parseLong(cached.trim()));
+        } catch (Exception ex) {
+            log.warn("Failed to read mail cooldown time from redis", ex);
+            return null;
         }
     }
 
