@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xbleey.goldpricealert.enums.GoldAlertLevel;
 import com.xbleey.goldpricealert.mapper.GoldAlertHistoryMapper;
 import com.xbleey.goldpricealert.model.GoldAlertHistory;
+import com.xbleey.goldpricealert.service.GoldAlertLevelName;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -80,6 +81,9 @@ public class AlertController {
         String normalizedInput = rawLevel.trim();
         if (normalizedInput.isEmpty()) {
             return normalizedInput;
+        }
+        if (GoldAlertLevelName.isValid(normalizedInput)) {
+            return GoldAlertLevelName.normalize(normalizedInput);
         }
 
         String upperInput = normalizedInput.toUpperCase(Locale.ROOT);

@@ -7,7 +7,7 @@
 2. 对每个告警等级，取“该等级窗口对应时间点”之前的最近快照作为基准价。
 3. 计算涨跌幅（百分比），取绝对值与阈值比较。
 4. 若多个等级同时满足，选择“绝对涨跌幅最大”的等级作为本次告警。
-5. 邮件发送受 `min-level` 与 per-level 冷却时间控制；若等级升级则立即发送。
+5. 邮件发送受 `min-level` 与 Redis 中 per-level 冷却时间控制；若等级升级则立即发送。
 
 ## 健康探针接口
 - `GET /health/live`：存活探针，返回应用进程是否存活（`200` + `status=UP`）。
@@ -17,6 +17,10 @@
 - `GET /health`：等价于 `GET /health/ready`，方便通用监控直接接入。
 
 ## 告警等级（GoldAlertLevel）
+告警等级与 cooldown 配置统一持久化在 Redis（key: `gold:alert:levels:config`）。
+- 首次读取若 Redis 无数据，系统会用内置 P1~P5 默认值初始化并写回 Redis。
+- 后续读取只使用 Redis 配置，不再直接使用枚举默认值。
+
 | 等级 | 观察窗口 | 触发阈值（绝对涨跌幅） |
 | --- | --- | --- |
 | INFO_LEVEL | 1 分钟 | 0.10% |
@@ -74,8 +78,20 @@ gold:
 ```
 
 说明：
-- `gold.alert.mail.cooldowns.<LEVEL>` 必须为所有等级配置，否则启动报错。
-- 冷却时间支持 `0m`，表示不限制频率。
+- `gold.alert.mail.min-level` 仍用于最低发送等级控制（支持 `MODERATE_LEVEL` 或 `P3` 形式）。
+- 冷却时间改为读取 Redis 的告警等级配置中的 `cooldown` 字段。
+
+## 告警等级配置接口（Redis 持久化）
+- `GET /alert/levels`：查询全部等级配置
+- `GET /alert/levels/{levelName}`：按等级查询（如 `P3`）
+- `POST /alert/levels`：新增等级（仅允许 `P6` 及以上）
+- `PUT /alert/levels/{levelName}`：更新等级（`P1~P5` 与 `P6+` 均可）
+- `DELETE /alert/levels/{levelName}`：删除等级（仅允许 `P6` 及以上）
+
+规则：
+- `P1~P5` 为固定内置等级，不允许删除，也不允许修改等级号/等级名；允许修改 `window`、`thresholdPercent`、`cooldown`。
+- `thresholdPercent` 入参必须在 `0~1` 且最多两位小数。
+- `window` 入参必须为非负整数（分钟）。
 
 ## 邮件收件人配置（MySQL 持久化）
 - 表结构见 `docs/gold_mail_recipient.sql`。
@@ -88,5 +104,5 @@ gold:
 - 新增和修改时会校验邮箱正则格式，不合法会返回 `400`。
 
 ## 运行方式
-- 直接运行 Spring Boot 应用即可（默认端口 80）。
+- 直接运行 Spring Boot 应用即可（默认端口 8080）。
 - 定时任务会自动按 `fetch-interval` 拉取并评估告警。

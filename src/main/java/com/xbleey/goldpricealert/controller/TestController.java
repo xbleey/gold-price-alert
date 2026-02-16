@@ -1,6 +1,7 @@
 package com.xbleey.goldpricealert.controller;
 
-import com.xbleey.goldpricealert.enums.GoldAlertLevel;
+import com.xbleey.goldpricealert.service.GoldAlertLevelConfig;
+import com.xbleey.goldpricealert.service.GoldAlertLevelConfigStore;
 import com.xbleey.goldpricealert.model.GoldPriceSnapshot;
 import com.xbleey.goldpricealert.service.GoldAlertEmailService;
 import com.xbleey.goldpricealert.service.GoldAlertMessage;
@@ -33,17 +34,20 @@ public class TestController {
     private final GoldAlertEmailService emailService;
     private final GoldMailRecipientService recipientService;
     private final GoldPriceHistory history;
+    private final GoldAlertLevelConfigStore levelConfigStore;
     private final Clock clock;
 
     public TestController(
             GoldAlertEmailService emailService,
             GoldMailRecipientService recipientService,
             GoldPriceHistory history,
+            GoldAlertLevelConfigStore levelConfigStore,
             Clock clock
     ) {
         this.emailService = emailService;
         this.recipientService = recipientService;
         this.history = history;
+        this.levelConfigStore = levelConfigStore;
         this.clock = clock;
     }
 
@@ -61,20 +65,21 @@ public class TestController {
         BigDecimal baselinePrice = baseline.price();
         BigDecimal latestPrice = latest.price();
         BigDecimal changePercent = computeChangePercent(baselinePrice, latestPrice);
-        GoldAlertLevel level = GoldAlertLevel.MAJOR_LEVEL;
+        GoldAlertLevelConfig level = resolveTestLevel();
         Duration window = resolveWindow(baseline.fetchedAt(), latest.fetchedAt());
         String alertTime = formatInstant(latest.fetchedAt());
         GoldAlertMessage message = new GoldAlertMessage(
-                level,
-                "WARNING!!WARNING!!WARNING!! level: " + level.getLevelName()
+                level.levelName(),
+                level.levelRank(),
+                "WARNING!!WARNING!!WARNING!! level: " + level.levelName()
                         + " | window=" + window
-                        + " threshold=" + formatPercent(level.getThresholdPercent()) + "%, change="
+                        + " threshold=" + formatPercent(level.thresholdPercent()) + "%, change="
                         + formatPercent(changePercent) + "%, price "
                         + formatPrice(baselinePrice) + " -> " + formatPrice(latestPrice)
                         + " time=" + alertTime,
                 latest.fetchedAt(),
                 window,
-                level.getThresholdPercent(),
+                level.thresholdPercent(),
                 changePercent,
                 baselinePrice,
                 latestPrice,
@@ -82,6 +87,12 @@ public class TestController {
         );
         emailService.notifyAlert(message);
         return "Triggered test email send with " + snapshots.size() + " snapshots.";
+    }
+
+    private GoldAlertLevelConfig resolveTestLevel() {
+        return levelConfigStore.findLevel("P4")
+                .or(() -> levelConfigStore.listLevels().stream().findFirst())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "alert levels not configured"));
     }
 
     private BigDecimal computeChangePercent(BigDecimal baselinePrice, BigDecimal latestPrice) {

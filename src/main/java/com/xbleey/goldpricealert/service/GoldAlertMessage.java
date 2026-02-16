@@ -1,6 +1,5 @@
 package com.xbleey.goldpricealert.service;
 
-import com.xbleey.goldpricealert.enums.GoldAlertLevel;
 import com.xbleey.goldpricealert.model.GoldPriceSnapshot;
 import lombok.experimental.Accessors;
 
@@ -10,7 +9,16 @@ import java.time.Instant;
 import java.util.List;
 
 @Accessors(fluent = true)
-public record GoldAlertMessage(GoldAlertLevel level, String message, Instant alertTime, Duration window,
-                               BigDecimal thresholdPercent, BigDecimal changePercent, BigDecimal baselinePrice,
-                               BigDecimal latestPrice, List<GoldPriceSnapshot> recentSnapshots) {
+public record GoldAlertMessage(
+        String levelName,
+        int levelRank,
+        String message,
+        Instant alertTime,
+        Duration window,
+        BigDecimal thresholdPercent,
+        BigDecimal changePercent,
+        BigDecimal baselinePrice,
+        BigDecimal latestPrice,
+        List<GoldPriceSnapshot> recentSnapshots
+) {
 }

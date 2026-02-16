@@ -1,9 +1,7 @@
 package com.xbleey.goldpricealert.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.xbleey.goldpricealert.config.GoldAlertWindowProperties;
 import com.xbleey.goldpricealert.config.GoldProperties;
-import com.xbleey.goldpricealert.enums.GoldAlertLevel;
 import com.xbleey.goldpricealert.repository.GoldAlertHistoryStore;
 import com.xbleey.goldpricealert.support.InMemoryGoldPriceSnapshotStore;
 import okhttp3.OkHttpClient;
@@ -18,11 +16,11 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.EnumMap;
-import java.util.Map;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class GoldPriceFetcherTest {
 
@@ -95,7 +93,7 @@ class GoldPriceFetcherTest {
                 history,
                 clock,
                 GoldAlertNotifier.noop(),
-                windowProperties(),
+                configStore(),
                 GoldAlertHistoryStore.noop()
         );
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
@@ -116,15 +114,15 @@ class GoldPriceFetcherTest {
     private record FetcherFixture(GoldPriceFetcher fetcher, GoldPriceHistory history) {
     }
 
-    private static GoldAlertWindowProperties windowProperties() {
-        GoldAlertWindowProperties properties = new GoldAlertWindowProperties();
-        Map<GoldAlertLevel, Duration> levels = new EnumMap<>(GoldAlertLevel.class);
-        levels.put(GoldAlertLevel.INFO_LEVEL, Duration.ofMinutes(1));
-        levels.put(GoldAlertLevel.MINOR_LEVEL, Duration.ofMinutes(5));
-        levels.put(GoldAlertLevel.MODERATE_LEVEL, Duration.ofMinutes(15));
-        levels.put(GoldAlertLevel.MAJOR_LEVEL, Duration.ofMinutes(60));
-        levels.put(GoldAlertLevel.CRITICAL_LEVEL, Duration.ofMinutes(60));
-        properties.setLevels(levels);
-        return properties;
+    private static GoldAlertLevelConfigStore configStore() {
+        GoldAlertLevelConfigStore store = mock(GoldAlertLevelConfigStore.class);
+        when(store.listLevels()).thenReturn(List.of(
+                new GoldAlertLevelConfig("P1", 1, java.math.BigDecimal.valueOf(0.10), 1, 30, true),
+                new GoldAlertLevelConfig("P2", 2, java.math.BigDecimal.valueOf(0.30), 5, 15, true),
+                new GoldAlertLevelConfig("P3", 3, java.math.BigDecimal.valueOf(0.60), 15, 10, true),
+                new GoldAlertLevelConfig("P4", 4, java.math.BigDecimal.ONE, 60, 5, true),
+                new GoldAlertLevelConfig("P5", 5, java.math.BigDecimal.valueOf(2.00), 60, 0, true)
+        ));
+        return store;
     }
 }

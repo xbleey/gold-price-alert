@@ -1,6 +1,5 @@
 package com.xbleey.goldpricealert.service;
 
-import com.xbleey.goldpricealert.enums.GoldAlertLevel;
 import com.xbleey.goldpricealert.model.GoldAlertHistory;
 import com.xbleey.goldpricealert.model.GoldApiResponse;
 import com.xbleey.goldpricealert.model.GoldPriceSnapshot;
@@ -13,11 +12,12 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.EnumMap;
-import java.util.Map;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class GoldAlertEvaluatorTest {
 
@@ -30,7 +30,7 @@ class GoldAlertEvaluatorTest {
                 history,
                 clock,
                 GoldAlertNotifier.noop(),
-                windowProperties(),
+                configStore(),
                 GoldAlertHistoryStore.noop()
         );
 
@@ -50,7 +50,7 @@ class GoldAlertEvaluatorTest {
                 history,
                 clock,
                 GoldAlertNotifier.noop(),
-                windowProperties(),
+                configStore(),
                 GoldAlertHistoryStore.noop()
         );
 
@@ -69,7 +69,7 @@ class GoldAlertEvaluatorTest {
                 history,
                 clock,
                 captured::set,
-                windowProperties(),
+                configStore(),
                 GoldAlertHistoryStore.noop()
         );
 
@@ -82,7 +82,7 @@ class GoldAlertEvaluatorTest {
 
         assertThat(evaluator.evaluate(latest)).isTrue();
         assertThat(captured.get()).isNotNull();
-        assertThat(captured.get().level()).isEqualTo(GoldAlertLevel.CRITICAL_LEVEL);
+        assertThat(captured.get().levelName()).isEqualTo("P5");
     }
 
     @Test
@@ -95,7 +95,7 @@ class GoldAlertEvaluatorTest {
                 history,
                 clock,
                 GoldAlertNotifier.noop(),
-                windowProperties(),
+                configStore(),
                 record -> {
                     persisted.set(record);
                     return record;
@@ -128,16 +128,15 @@ class GoldAlertEvaluatorTest {
         return new GoldPriceSnapshot(time, response);
     }
 
-    private static com.xbleey.goldpricealert.config.GoldAlertWindowProperties windowProperties() {
-        com.xbleey.goldpricealert.config.GoldAlertWindowProperties properties =
-                new com.xbleey.goldpricealert.config.GoldAlertWindowProperties();
-        Map<GoldAlertLevel, Duration> levels = new EnumMap<>(GoldAlertLevel.class);
-        levels.put(GoldAlertLevel.INFO_LEVEL, Duration.ofMinutes(1));
-        levels.put(GoldAlertLevel.MINOR_LEVEL, Duration.ofMinutes(5));
-        levels.put(GoldAlertLevel.MODERATE_LEVEL, Duration.ofMinutes(15));
-        levels.put(GoldAlertLevel.MAJOR_LEVEL, Duration.ofMinutes(60));
-        levels.put(GoldAlertLevel.CRITICAL_LEVEL, Duration.ofMinutes(60));
-        properties.setLevels(levels);
-        return properties;
+    private static GoldAlertLevelConfigStore configStore() {
+        GoldAlertLevelConfigStore store = mock(GoldAlertLevelConfigStore.class);
+        when(store.listLevels()).thenReturn(List.of(
+                new GoldAlertLevelConfig("P1", 1, new BigDecimal("0.10"), 1, 30, true),
+                new GoldAlertLevelConfig("P2", 2, new BigDecimal("0.30"), 5, 15, true),
+                new GoldAlertLevelConfig("P3", 3, new BigDecimal("0.60"), 15, 10, true),
+                new GoldAlertLevelConfig("P4", 4, new BigDecimal("1.00"), 60, 5, true),
+                new GoldAlertLevelConfig("P5", 5, new BigDecimal("2.00"), 60, 0, true)
+        ));
+        return store;
     }
 }

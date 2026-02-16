@@ -1,7 +1,6 @@
 package com.xbleey.goldpricealert.service;
 
 import com.xbleey.goldpricealert.config.GoldAlertMailProperties;
-import com.xbleey.goldpricealert.enums.GoldAlertLevel;
 import com.xbleey.goldpricealert.model.GoldApiResponse;
 import com.xbleey.goldpricealert.model.GoldPriceSnapshot;
 import jakarta.mail.internet.MimeMessage;
@@ -27,7 +26,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -60,11 +59,12 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
     private final GoldAlertMailProperties properties;
     private final Clock clock;
     private final StringRedisTemplate redisTemplate;
+    private final GoldAlertLevelConfigStore configStore;
     private final GoldMailRecipientService mailRecipientService;
     private final Object sendLock = new Object();
-    private final Map<GoldAlertLevel, Instant> lastSentAtByLevel = new EnumMap<>(GoldAlertLevel.class);
+    private final Map<String, Instant> lastSentAtByLevel = new HashMap<>();
     private Instant lastSentAt;
-    private GoldAlertLevel lastSentLevel;
+    private String lastSentLevelName;
 
     @Autowired
     public GoldAlertEmailService(
@@ -72,12 +72,14 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
             GoldAlertMailProperties properties,
             Clock clock,
             StringRedisTemplate redisTemplate,
+            GoldAlertLevelConfigStore configStore,
             GoldMailRecipientService mailRecipientService
     ) {
         this.mailSender = mailSender;
         this.properties = properties;
         this.clock = clock;
         this.redisTemplate = redisTemplate;
+        this.configStore = configStore;
         this.mailRecipientService = mailRecipientService;
     }
 
@@ -87,7 +89,7 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
             Clock clock,
             GoldMailRecipientService mailRecipientService
     ) {
-        this(mailSender, properties, clock, null, mailRecipientService);
+        this(mailSender, properties, clock, null, null, mailRecipientService);
     }
 
     @Override
@@ -143,14 +145,18 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
     }
 
     private boolean shouldSend(GoldAlertMessage message) {
-        if (message == null || message.level() == null) {
+        if (message == null || message.levelName() == null) {
             return false;
         }
-        GoldAlertLevel minLevel = properties.getMinLevel();
-        if (minLevel == null) {
-            return canSendWithCooldown(message);
+        int messageRank = message.levelRank() > 0 ? message.levelRank() : resolveLevelRank(message.levelName());
+        int minRank;
+        try {
+            minRank = properties.resolveMinLevelRank();
+        } catch (Exception ex) {
+            log.warn("Invalid gold.alert.mail.min-level, fallback to P1", ex);
+            minRank = 1;
         }
-        if (message.level().ordinal() < minLevel.ordinal()) {
+        if (messageRank < minRank) {
             return false;
         }
         return canSendWithCooldown(message);
@@ -159,35 +165,61 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
     private boolean canSendWithCooldown(GoldAlertMessage message) {
         Instant now = message.alertTime() == null ? Instant.now(clock) : message.alertTime();
         synchronized (sendLock) {
-            GoldAlertLevel currentLastLevel = resolveLastSentLevel();
+            int messageRank = message.levelRank() > 0 ? message.levelRank() : resolveLevelRank(message.levelName());
+            String currentLastLevel = resolveLastSentLevelName();
             Instant currentLastAt = resolveLastSentAt();
-            boolean isLevelUp = currentLastLevel == null
-                    || message.level().ordinal() > currentLastLevel.ordinal();
+            int currentLastRank = resolveLevelRank(currentLastLevel);
+            boolean isLevelUp = currentLastLevel == null || messageRank > currentLastRank;
             if (isLevelUp || currentLastAt == null) {
-                recordSent(message.level(), now);
+                recordSent(message.levelName(), now);
                 return true;
             }
-            Duration cooldown = properties.cooldownFor(message.level());
+            Duration cooldown = resolveCooldown(message);
             if (cooldown == null || cooldown.isZero() || cooldown.isNegative()) {
-                recordSent(message.level(), now);
+                recordSent(message.levelName(), now);
                 return true;
             }
-            Instant lastAtForLevel = resolveLastSentAtForLevel(message.level());
+            Instant lastAtForLevel = resolveLastSentAtForLevel(message.levelName());
             Instant baseline = lastAtForLevel == null ? currentLastAt : lastAtForLevel;
             Duration elapsed = Duration.between(baseline, now);
             if (elapsed.compareTo(cooldown) >= 0) {
-                recordSent(message.level(), now);
+                recordSent(message.levelName(), now);
                 return true;
             }
             return false;
         }
     }
 
-    private void recordSent(GoldAlertLevel level, Instant now) {
+    private Duration resolveCooldown(GoldAlertMessage message) {
+        if (message == null || message.levelName() == null || configStore == null) {
+            return Duration.ZERO;
+        }
+        return configStore.findLevel(message.levelName())
+                .map(GoldAlertLevelConfig::cooldownDuration)
+                .orElse(Duration.ZERO);
+    }
+
+    private int resolveLevelRank(String levelName) {
+        if (levelName == null || levelName.isBlank()) {
+            return 0;
+        }
+        try {
+            if (configStore != null) {
+                return configStore.findLevel(levelName)
+                        .map(GoldAlertLevelConfig::levelRank)
+                        .orElseGet(() -> GoldAlertLevelName.rankOf(levelName));
+            }
+            return GoldAlertLevelName.rankOf(levelName);
+        } catch (Exception ex) {
+            return 0;
+        }
+    }
+
+    private void recordSent(String levelName, Instant now) {
         lastSentAt = now;
-        lastSentLevel = level;
-        if (level != null) {
-            lastSentAtByLevel.put(level, now);
+        lastSentLevelName = levelName;
+        if (levelName != null) {
+            lastSentAtByLevel.put(levelName, now);
         }
         // 写入 Redis，确保多实例共享冷却状态
         if (redisTemplate == null || now == null) {
@@ -196,9 +228,9 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         try {
             String epochMillis = String.valueOf(now.toEpochMilli());
             redisTemplate.opsForValue().set(MAIL_LAST_SENT_AT_KEY, epochMillis);
-            if (level != null) {
-                redisTemplate.opsForValue().set(MAIL_LAST_SENT_LEVEL_KEY, level.name());
-                redisTemplate.opsForValue().set(MAIL_LAST_SENT_AT_LEVEL_PREFIX + level.name(), epochMillis);
+            if (levelName != null) {
+                redisTemplate.opsForValue().set(MAIL_LAST_SENT_LEVEL_KEY, levelName);
+                redisTemplate.opsForValue().set(MAIL_LAST_SENT_AT_LEVEL_PREFIX + levelName, epochMillis);
             }
         } catch (Exception ex) {
             log.warn("Failed to persist mail cooldown state to redis", ex);
@@ -213,30 +245,30 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         return cached != null ? cached : lastSentAt;
     }
 
-    private GoldAlertLevel resolveLastSentLevel() {
+    private String resolveLastSentLevelName() {
         if (redisTemplate == null) {
-            return lastSentLevel;
+            return lastSentLevelName;
         }
         try {
             String cached = redisTemplate.opsForValue().get(MAIL_LAST_SENT_LEVEL_KEY);
             if (cached != null && !cached.isBlank()) {
-                return GoldAlertLevel.valueOf(cached.trim());
+                return cached.trim();
             }
         } catch (Exception ex) {
             log.warn("Failed to read mail cooldown level from redis", ex);
         }
-        return lastSentLevel;
+        return lastSentLevelName;
     }
 
-    private Instant resolveLastSentAtForLevel(GoldAlertLevel level) {
-        if (level == null) {
+    private Instant resolveLastSentAtForLevel(String levelName) {
+        if (levelName == null || levelName.isBlank()) {
             return null;
         }
         if (redisTemplate == null) {
-            return lastSentAtByLevel.get(level);
+            return lastSentAtByLevel.get(levelName);
         }
-        Instant cached = readInstantFromRedis(MAIL_LAST_SENT_AT_LEVEL_PREFIX + level.name());
-        return cached != null ? cached : lastSentAtByLevel.get(level);
+        Instant cached = readInstantFromRedis(MAIL_LAST_SENT_AT_LEVEL_PREFIX + levelName);
+        return cached != null ? cached : lastSentAtByLevel.get(levelName);
     }
 
     private Instant readInstantFromRedis(String key) {
@@ -303,7 +335,7 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
     }
 
     private String buildSubject(GoldAlertMessage message) {
-        return "Gold Price Alert " + resolveDirectionTag(message) + " - " + message.level().getLevelName();
+        return "Gold Price Alert " + resolveDirectionTag(message) + " - " + message.levelName();
     }
 
     private String buildThresholdSubject(GoldThresholdAlertMessage message) {
@@ -345,7 +377,7 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         ZoneId zone = clock.getZone();
         ZoneId updatedAtZone = ZoneId.of("UTC+08:00");
         builder.append("WARNING!!WARNING!!WARNING!!").append('\n');
-        builder.append("level: ").append(message.level().getLevelName()).append('\n');
+        builder.append("level: ").append(message.levelName()).append('\n');
         builder.append("window=").append(formatDuration(message.window())).append('\n');
         builder.append("threshold=").append(formatPercent(message.thresholdPercent())).append("%").append('\n');
         builder.append("change=").append(formatPercent(message.changePercent())).append("%").append('\n');
@@ -425,7 +457,7 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         builder.append("<html><body>");
         builder.append("<h2>WARNING!!WARNING!!WARNING!!</h2>");
         builder.append("<h3><span style=\"color:#d32f2f;font-weight:bold;\">level: ")
-                .append(escapeHtml(message.level().getLevelName()))
+                .append(escapeHtml(message.levelName()))
                 .append("</span></h3>");
         builder.append("<h3>window=").append(escapeHtml(formatDuration(message.window()))).append("</h3>");
         builder.append("<h3>threshold=").append(escapeHtml(formatPercent(message.thresholdPercent())))

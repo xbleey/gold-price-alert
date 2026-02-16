@@ -35,18 +35,13 @@ public class GoldAlertWindowProperties {
     @PostConstruct
     public void validate() {
         if (levels == null || levels.isEmpty()) {
-            throw new IllegalStateException("gold.alert.window.levels must be configured for all levels");
+            return;
         }
-        for (GoldAlertLevel level : GoldAlertLevel.values()) {
-            Duration duration = levels.get(level);
-            if (duration == null) {
+        for (Map.Entry<GoldAlertLevel, Duration> entry : levels.entrySet()) {
+            Duration duration = entry.getValue();
+            if (duration == null || duration.isZero() || duration.isNegative()) {
                 throw new IllegalStateException(
-                        "gold.alert.window.levels." + level + " must be configured"
-                );
-            }
-            if (duration.isZero() || duration.isNegative()) {
-                throw new IllegalStateException(
-                        "gold.alert.window.levels." + level + " must be > 0"
+                        "gold.alert.window.levels." + entry.getKey() + " must be > 0"
                 );
             }
         }

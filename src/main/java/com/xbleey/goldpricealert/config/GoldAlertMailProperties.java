@@ -1,14 +1,10 @@
 package com.xbleey.goldpricealert.config;
 
 import com.xbleey.goldpricealert.enums.GoldAlertLevel;
-import jakarta.annotation.PostConstruct;
+import com.xbleey.goldpricealert.service.GoldAlertLevelName;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
-
-import java.time.Duration;
-import java.util.EnumMap;
-import java.util.Map;
 
 @Data
 @Component
@@ -16,41 +12,25 @@ import java.util.Map;
 public class GoldAlertMailProperties {
 
     private String sender;
-    private GoldAlertLevel minLevel = GoldAlertLevel.MODERATE_LEVEL;
-    private Map<GoldAlertLevel, Duration> cooldowns = new EnumMap<>(GoldAlertLevel.class);
+    // 兼容历史配置值（如 MODERATE_LEVEL）和新配置值（如 P3）
+    private String minLevel = GoldAlertLevel.MODERATE_LEVEL.name();
 
-    public Duration cooldownFor(GoldAlertLevel level) {
-        if (level == null || cooldowns == null || cooldowns.isEmpty()) {
-            return null;
+    public int resolveMinLevelRank() {
+        if (minLevel == null || minLevel.isBlank()) {
+            return 1;
         }
-        return cooldowns.get(level);
-    }
-
-    public void setCooldowns(Map<GoldAlertLevel, Duration> cooldowns) {
-        if (cooldowns == null) {
-            this.cooldowns = new EnumMap<>(GoldAlertLevel.class);
-            return;
-        }
-        this.cooldowns = new EnumMap<>(cooldowns);
-    }
-
-    @PostConstruct
-    public void validate() {
-        if (cooldowns == null || cooldowns.isEmpty()) {
-            throw new IllegalStateException("gold.alert.mail.cooldowns must be configured for all levels");
+        String trimmed = minLevel.trim();
+        if (GoldAlertLevelName.isValid(trimmed)) {
+            return GoldAlertLevelName.rankOf(trimmed);
         }
         for (GoldAlertLevel level : GoldAlertLevel.values()) {
-            Duration duration = cooldowns.get(level);
-            if (duration == null) {
-                throw new IllegalStateException(
-                        "gold.alert.mail.cooldowns." + level + " must be configured"
-                );
+            if (level.name().equalsIgnoreCase(trimmed)) {
+                return GoldAlertLevelName.rankOf(level.getLevelName());
             }
-            if (duration.isNegative()) {
-                throw new IllegalStateException(
-                        "gold.alert.mail.cooldowns." + level + " must be >= 0"
-                );
+            if (level.getLevelName().equalsIgnoreCase(trimmed)) {
+                return GoldAlertLevelName.rankOf(level.getLevelName());
             }
         }
+        throw new IllegalArgumentException("invalid gold.alert.mail.min-level: " + minLevel);
     }
 }

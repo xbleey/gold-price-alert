@@ -1,7 +1,5 @@
 package com.xbleey.goldpricealert.service;
 
-import com.xbleey.goldpricealert.config.GoldAlertWindowProperties;
-import com.xbleey.goldpricealert.enums.GoldAlertLevel;
 import com.xbleey.goldpricealert.model.GoldAlertHistory;
 import com.xbleey.goldpricealert.model.GoldPriceSnapshot;
 import com.xbleey.goldpricealert.repository.GoldAlertHistoryStore;
@@ -31,30 +29,27 @@ public class GoldAlertEvaluator {
     private final GoldPriceHistory history;
     private final Clock clock;
     private final GoldAlertNotifier alertNotifier;
-    private final GoldAlertWindowProperties windowProperties;
+    private final GoldAlertLevelConfigStore configStore;
     private final GoldAlertHistoryStore alertHistoryStore;
 
     public GoldAlertEvaluator(
             GoldPriceHistory history,
             Clock clock,
             GoldAlertNotifier alertNotifier,
-            GoldAlertWindowProperties windowProperties,
+            GoldAlertLevelConfigStore configStore,
             GoldAlertHistoryStore alertHistoryStore
     ) {
         this.history = history;
         this.clock = clock;
         this.alertNotifier = alertNotifier == null ? GoldAlertNotifier.noop() : alertNotifier;
-        this.windowProperties = windowProperties;
+        this.configStore = configStore;
         this.alertHistoryStore = alertHistoryStore == null ? GoldAlertHistoryStore.noop() : alertHistoryStore;
     }
 
     public boolean evaluate(GoldPriceSnapshot latest) {
         AlertCandidate bestCandidate = null;
-        for (GoldAlertLevel level : GoldAlertLevel.values()) {
-            Duration window = windowProperties.windowFor(level);
-            if (window == null) {
-                continue;
-            }
+        for (GoldAlertLevelConfig config : configStore.listLevels()) {
+            Duration window = config.windowDuration();
             Instant target = latest.fetchedAt().minus(window);
             Optional<GoldPriceSnapshot> baseline = history.findSnapshotAtOrBefore(target);
             if (baseline.isPresent()) {
@@ -68,14 +63,15 @@ public class GoldAlertEvaluator {
                         .divide(baselinePrice, MATH_CONTEXT)
                         .multiply(ONE_HUNDRED, MATH_CONTEXT);
                 BigDecimal absChange = changePercent.abs();
-                BigDecimal threshold = level.getThresholdPercent();
+                BigDecimal threshold = config.thresholdPercent();
                 if (absChange.compareTo(threshold) >= 0) {
                     if (bestCandidate == null) {
-                        bestCandidate = new AlertCandidate(level, window, baselinePrice, changePercent, absChange);
+                        bestCandidate = new AlertCandidate(config, window, baselinePrice, changePercent, absChange);
                     } else {
-                        int absCompare = absChange.compareTo(bestCandidate.absChangePercent);
-                        if (absCompare > 0 || (absCompare == 0 && level.ordinal() > bestCandidate.level.ordinal())) {
-                            bestCandidate = new AlertCandidate(level, window, baselinePrice, changePercent, absChange);
+                        int absCompare = absChange.compareTo(bestCandidate.absChangePercent());
+                        if (absCompare > 0
+                                || (absCompare == 0 && config.levelRank() > bestCandidate.config().levelRank())) {
+                            bestCandidate = new AlertCandidate(config, window, baselinePrice, changePercent, absChange);
                         }
                     }
                 }
@@ -90,13 +86,14 @@ public class GoldAlertEvaluator {
                 log.warn(alertMessage);
             }
             GoldAlertMessage message = new GoldAlertMessage(
-                    bestCandidate.level,
+                    bestCandidate.config().levelName(),
+                    bestCandidate.config().levelRank(),
                     alertMessage,
                     latest.fetchedAt(),
-                    bestCandidate.window,
-                    bestCandidate.level.getThresholdPercent(),
-                    bestCandidate.changePercent,
-                    bestCandidate.baselinePrice,
+                    bestCandidate.window(),
+                    bestCandidate.config().thresholdPercent(),
+                    bestCandidate.changePercent(),
+                    bestCandidate.baselinePrice(),
                     latest.price(),
                     history.getRecent(60)
             );
@@ -113,7 +110,7 @@ public class GoldAlertEvaluator {
         }
         Instant alertTime = message.alertTime() == null ? Instant.now(clock) : message.alertTime();
         GoldAlertHistory record = new GoldAlertHistory();
-        record.setAlertLevel(message.level() == null ? null : message.level().getLevelName());
+        record.setAlertLevel(message.levelName());
         record.setAlertTimeUtc(alertTime);
         record.setAlertTimeBeijing(LocalDateTime.ofInstant(alertTime, ZoneId.of("Asia/Shanghai")));
         record.setThresholdPercent(message.thresholdPercent());
@@ -132,15 +129,20 @@ public class GoldAlertEvaluator {
     }
 
     private String formatAlertMessage(AlertCandidate candidate, GoldPriceSnapshot latest, String alertTime) {
-        return "WARNING!!WARNING!!WARNING!! level: " + candidate.level.getLevelName()
-                + " | window=" + candidate.window
-                + " threshold=" + formatPercent(candidate.level.getThresholdPercent()) + "%, change="
-                + formatPercent(candidate.changePercent) + "%, price "
-                + candidate.baselinePrice + " -> " + latest.price()
+        return "WARNING!!WARNING!!WARNING!! level: " + candidate.config().levelName()
+                + " | window=" + candidate.window()
+                + " threshold=" + formatPercent(candidate.config().thresholdPercent()) + "%, change="
+                + formatPercent(candidate.changePercent()) + "%, price "
+                + candidate.baselinePrice() + " -> " + latest.price()
                 + " time=" + alertTime;
     }
 
-    private record AlertCandidate(GoldAlertLevel level, Duration window, BigDecimal baselinePrice,
-                                  BigDecimal changePercent, BigDecimal absChangePercent) {
+    private record AlertCandidate(
+            GoldAlertLevelConfig config,
+            Duration window,
+            BigDecimal baselinePrice,
+            BigDecimal changePercent,
+            BigDecimal absChangePercent
+    ) {
     }
 }
