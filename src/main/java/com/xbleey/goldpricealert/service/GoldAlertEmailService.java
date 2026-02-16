@@ -267,7 +267,7 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
             return null;
         }
         if (recipients.isEmpty()) {
-            log.debug("Skip alert email: recipients not configured");
+            log.warn("Skip alert email: recipients not configured");
             return null;
         }
         return new EmailTargets(sender, recipients);

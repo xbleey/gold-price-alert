@@ -4,10 +4,13 @@ import com.xbleey.goldpricealert.enums.GoldAlertLevel;
 import com.xbleey.goldpricealert.model.GoldPriceSnapshot;
 import com.xbleey.goldpricealert.service.GoldAlertEmailService;
 import com.xbleey.goldpricealert.service.GoldAlertMessage;
+import com.xbleey.goldpricealert.service.GoldMailRecipientService;
 import com.xbleey.goldpricealert.service.GoldPriceHistory;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -28,17 +31,27 @@ public class TestController {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final GoldAlertEmailService emailService;
+    private final GoldMailRecipientService recipientService;
     private final GoldPriceHistory history;
     private final Clock clock;
 
-    public TestController(GoldAlertEmailService emailService, GoldPriceHistory history, Clock clock) {
+    public TestController(
+            GoldAlertEmailService emailService,
+            GoldMailRecipientService recipientService,
+            GoldPriceHistory history,
+            Clock clock
+    ) {
         this.emailService = emailService;
+        this.recipientService = recipientService;
         this.history = history;
         this.clock = clock;
     }
 
     @PostMapping("/email")
     public String sendTestEmail() {
+        if (recipientService.listEnabledEmails().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "recipients not configured");
+        }
         List<GoldPriceSnapshot> snapshots = history.getRecent(60);
         if (snapshots.isEmpty()) {
             return "No snapshots found in database. Fetch prices first.";
