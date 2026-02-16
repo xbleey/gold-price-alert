@@ -90,7 +90,7 @@ gold:
 
 规则：
 - `P1~P5` 为固定内置等级，不允许删除，也不允许修改等级号/等级名；允许修改 `window`、`thresholdPercent`、`cooldown`。
-- `thresholdPercent` 入参必须在 `0~1` 且最多两位小数。
+- `thresholdPercent` 入参必须在 `0~10` 且最多两位小数（数值按百分比语义存储与计算，例如 `5.25` 即 `5.25%`）。
 - `window` 入参必须为非负整数（分钟）。
 
 ## 邮件收件人配置（MySQL 持久化）

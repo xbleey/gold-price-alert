@@ -24,7 +24,7 @@ public class GoldAlertLevelConfigStore {
     private static final Logger log = LoggerFactory.getLogger(GoldAlertLevelConfigStore.class);
     private static final String ALERT_LEVEL_CONFIG_KEY = "gold:alert:levels:config";
     private static final BigDecimal ZERO = BigDecimal.ZERO;
-    private static final BigDecimal ONE = BigDecimal.ONE;
+    private static final BigDecimal TEN = BigDecimal.TEN;
     private static final TypeReference<List<GoldAlertLevelConfig>> LEVEL_LIST_TYPE =
             new TypeReference<>() {
             };
@@ -196,8 +196,8 @@ public class GoldAlertLevelConfigStore {
         if (thresholdPercent.scale() > 2) {
             throw new IllegalArgumentException("thresholdPercent scale must be <= 2");
         }
-        if (thresholdPercent.compareTo(ZERO) < 0 || thresholdPercent.compareTo(ONE) > 0) {
-            throw new IllegalArgumentException("thresholdPercent must be between 0 and 1");
+        if (thresholdPercent.compareTo(ZERO) < 0 || thresholdPercent.compareTo(TEN) > 0) {
+            throw new IllegalArgumentException("thresholdPercent must be between 0 and 10");
         }
     }
 
@@ -284,13 +284,8 @@ public class GoldAlertLevelConfigStore {
     }
 
     private boolean isProtectedConfigValid(GoldAlertLevelConfig config) {
-        if (config.thresholdPercent() == null) {
-            return false;
-        }
-        if (config.thresholdPercent().compareTo(ZERO) < 0) {
-            return false;
-        }
         try {
+            validateThresholdForEditable(config.thresholdPercent());
             validateMinutes(config.windowMinutes(), "window");
             validateMinutes(config.cooldownMinutes(), "cooldown");
             return true;

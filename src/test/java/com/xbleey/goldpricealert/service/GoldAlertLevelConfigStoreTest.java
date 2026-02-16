@@ -85,9 +85,9 @@ class GoldAlertLevelConfigStoreTest {
         GoldAlertLevelConfigStore store = fixture.store();
         store.listLevels();
 
-        assertThatThrownBy(() -> store.createLevel("P6", new BigDecimal("1.01"), 1, 0))
+        assertThatThrownBy(() -> store.createLevel("P6", new BigDecimal("10.01"), 1, 0))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("between 0 and 1");
+                .hasMessageContaining("between 0 and 10");
 
         assertThatThrownBy(() -> store.createLevel("P6", new BigDecimal("0.123"), 1, 0))
                 .isInstanceOf(IllegalArgumentException.class)
