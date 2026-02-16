@@ -60,6 +60,7 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
     private final GoldAlertMailProperties properties;
     private final Clock clock;
     private final StringRedisTemplate redisTemplate;
+    private final GoldMailRecipientService mailRecipientService;
     private final Object sendLock = new Object();
     private final Map<GoldAlertLevel, Instant> lastSentAtByLevel = new EnumMap<>(GoldAlertLevel.class);
     private Instant lastSentAt;
@@ -70,16 +71,23 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
             JavaMailSender mailSender,
             GoldAlertMailProperties properties,
             Clock clock,
-            StringRedisTemplate redisTemplate
+            StringRedisTemplate redisTemplate,
+            GoldMailRecipientService mailRecipientService
     ) {
         this.mailSender = mailSender;
         this.properties = properties;
         this.clock = clock;
         this.redisTemplate = redisTemplate;
+        this.mailRecipientService = mailRecipientService;
     }
 
-    public GoldAlertEmailService(JavaMailSender mailSender, GoldAlertMailProperties properties, Clock clock) {
-        this(mailSender, properties, clock, null);
+    public GoldAlertEmailService(
+            JavaMailSender mailSender,
+            GoldAlertMailProperties properties,
+            Clock clock,
+            GoldMailRecipientService mailRecipientService
+    ) {
+        this(mailSender, properties, clock, null, mailRecipientService);
     }
 
     @Override
@@ -253,7 +261,7 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
 
     private EmailTargets resolveEmailTargets() {
         String sender = normalize(properties.getSender());
-        List<String> recipients = normalizeRecipients(properties.getRecipients());
+        List<String> recipients = normalizeRecipients(mailRecipientService.listEnabledEmails());
         if (sender == null) {
             log.warn("Skip alert email: sender not configured");
             return null;

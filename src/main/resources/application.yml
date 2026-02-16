@@ -49,7 +49,6 @@ gold:
         CRITICAL_LEVEL: 60m
     mail:
       sender: ${GOLD_MAIL_SENDER:}
-      recipients: ${GOLD_MAIL_RECIPIENTS:}
       min-level: ${GOLD_MAIL_MIN_LEVEL:MODERATE_LEVEL}
       cooldowns:
         INFO_LEVEL: ${GOLD_MAIL_COOLDOWN_INFO:30m}

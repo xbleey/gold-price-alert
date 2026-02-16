@@ -12,7 +12,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.List;
 import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,9 +29,10 @@ class GoldAlertEmailServiceApiTemplateTest {
 
         GoldAlertMailProperties properties = new GoldAlertMailProperties();
         properties.setSender("sender@example.com");
-        properties.setRecipients(List.of("receiver@example.com"));
+        GoldMailRecipientService recipientService = mock(GoldMailRecipientService.class);
+        when(recipientService.listEnabledEmails()).thenReturn(java.util.List.of("receiver@example.com"));
         Clock clock = Clock.fixed(Instant.parse("2026-01-05T12:00:00Z"), ZoneOffset.UTC);
-        GoldAlertEmailService service = new GoldAlertEmailService(mailSender, properties, clock);
+        GoldAlertEmailService service = new GoldAlertEmailService(mailSender, properties, clock, recipientService);
 
         GoldApiErrorMessage message = new GoldApiErrorMessage(
                 Instant.parse("2026-01-05T12:00:00Z"),
@@ -61,9 +61,10 @@ class GoldAlertEmailServiceApiTemplateTest {
 
         GoldAlertMailProperties properties = new GoldAlertMailProperties();
         properties.setSender("sender@example.com");
-        properties.setRecipients(List.of("receiver@example.com"));
+        GoldMailRecipientService recipientService = mock(GoldMailRecipientService.class);
+        when(recipientService.listEnabledEmails()).thenReturn(java.util.List.of("receiver@example.com"));
         Clock clock = Clock.fixed(Instant.parse("2026-01-05T12:30:00Z"), ZoneOffset.UTC);
-        GoldAlertEmailService service = new GoldAlertEmailService(mailSender, properties, clock);
+        GoldAlertEmailService service = new GoldAlertEmailService(mailSender, properties, clock, recipientService);
 
         GoldApiResumeMessage message = new GoldApiResumeMessage(
                 Instant.parse("2026-01-05T12:30:00Z"),

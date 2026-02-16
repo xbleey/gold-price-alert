@@ -64,7 +64,6 @@ gold:
   alert:
     mail:
       sender: ${GOLD_MAIL_SENDER:}
-      recipients: ${GOLD_MAIL_RECIPIENTS:}
       min-level: ${GOLD_MAIL_MIN_LEVEL:MINOR_LEVEL}
       cooldowns:
         INFO_LEVEL: ${GOLD_MAIL_COOLDOWN_INFO:30m}
@@ -77,6 +76,16 @@ gold:
 说明：
 - `gold.alert.mail.cooldowns.<LEVEL>` 必须为所有等级配置，否则启动报错。
 - 冷却时间支持 `0m`，表示不限制频率。
+
+## 邮件收件人配置（MySQL 持久化）
+- 表结构见 `docs/gold_mail_recipient.sql`。
+- 接口：
+  - `GET /mail/recipients`：查询全部收件人
+  - `GET /mail/recipients/{id}`：按 id 查询
+  - `POST /mail/recipients`：新增（JSON：`email`、`enabled`）
+  - `PUT /mail/recipients/{id}`：修改（JSON：`email`、`enabled`）
+  - `DELETE /mail/recipients/{id}`：删除
+- 新增和修改时会校验邮箱正则格式，不合法会返回 `400`。
 
 ## 运行方式
 - 直接运行 Spring Boot 应用即可（默认端口 80）。

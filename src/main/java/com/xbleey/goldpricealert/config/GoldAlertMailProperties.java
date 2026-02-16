@@ -7,9 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.EnumMap;
-import java.util.List;
 import java.util.Map;
 
 @Data
@@ -18,7 +16,6 @@ import java.util.Map;
 public class GoldAlertMailProperties {
 
     private String sender;
-    private List<String> recipients = new ArrayList<>();
     private GoldAlertLevel minLevel = GoldAlertLevel.MODERATE_LEVEL;
     private Map<GoldAlertLevel, Duration> cooldowns = new EnumMap<>(GoldAlertLevel.class);
 
