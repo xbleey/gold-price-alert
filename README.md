@@ -16,6 +16,14 @@
   - 任一依赖不可用返回 `503` + `status=DOWN`。
 - `GET /health`：等价于 `GET /health/ready`，方便通用监控直接接入。
 
+## API 认证（Spring Security）
+- 所有 API 均要求认证（HTTP Basic）。
+- 用户管理接口 `/users/**` 仅 `ADMIN` 角色可访问。
+- 用户表结构见 `docs/app_user.sql`。
+- 首次启动时若 `app_user` 表中不存在 `admin` 用户，系统会自动创建默认账号：
+  - 用户名：`admin`
+  - 密码：`admin`
+
 ## 告警等级（GoldAlertLevel）
 告警等级与 cooldown 配置统一持久化在 Redis（key: `gold:alert:levels:config`）。
 - 首次读取若 Redis 无数据，系统会用内置 P1~P5 默认值初始化并写回 Redis。
@@ -102,6 +110,15 @@ gold:
   - `PUT /mail/recipients/{id}`：修改（JSON：`email`、`enabled`）
   - `DELETE /mail/recipients/{id}`：删除
 - 新增和修改时会校验邮箱正则格式，不合法会返回 `400`。
+
+## 用户管理（MySQL 持久化）
+- 接口：
+  - `GET /users`：查询全部用户
+  - `GET /users/{id}`：按 id 查询
+  - `POST /users`：新增用户（JSON：`username`、`password`、`role`、`enabled`）
+  - `PUT /users/{id}`：修改用户（JSON：`username`、`password`、`role`、`enabled`，均可选）
+  - `DELETE /users/{id}`：删除用户
+- 接口响应不会返回密码字段。
 
 ## 运行方式
 - 直接运行 Spring Boot 应用即可（默认端口 8080）。
