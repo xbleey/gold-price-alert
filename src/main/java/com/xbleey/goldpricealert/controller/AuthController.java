@@ -5,12 +5,16 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -54,7 +58,10 @@ public class AuthController {
     public ResponseEntity<Map<String, Object>> logout(HttpServletRequest request) {
         String token = extractBearerToken(request.getHeader(HttpHeaders.AUTHORIZATION));
         if (token == null) {
-            return badRequest("authorization header must be Bearer token");
+            return ResponseEntity.ok(Map.of(
+                    "status", "logged_out",
+                    "revoked", false
+            ));
         }
         try {
             boolean revoked = authSessionService.logout(token);
@@ -65,6 +72,31 @@ public class AuthController {
         } catch (IllegalStateException ex) {
             return response(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", "logout failed");
         }
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<Map<String, Object>> me(HttpServletRequest request, Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return unauthorized("invalid or expired token");
+        }
+        String token = extractBearerToken(request.getHeader(HttpHeaders.AUTHORIZATION));
+        if (token == null) {
+            return unauthorized("invalid or expired token");
+        }
+        return authSessionService.getSession(token)
+                .map(session -> ResponseEntity.ok(Map.of(
+                        "username", session.username(),
+                        "role", session.role(),
+                        "authorities", extractAuthorities(authentication),
+                        "expiresAt", session.expiresAt()
+                )))
+                .orElseGet(() -> unauthorized("invalid or expired token"));
+    }
+
+    private List<String> extractAuthorities(Authentication authentication) {
+        return authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .toList();
     }
 
     private String extractBearerToken(String authorizationHeader) {

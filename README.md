@@ -18,8 +18,9 @@
 
 ## API 认证（Spring Security + Redis 会话）
 - 登录接口：`POST /auth/login`（JSON：`username`、`password`），成功后返回 `accessToken`（Bearer Token）。
-- 登出接口：`POST /auth/logout`（请求头：`Authorization: Bearer <accessToken>`）。
-- 除 `/auth/login` 外，其余 API 均要求携带 Bearer Token。
+- 当前登录态：`GET /auth/me`（请求头：`Authorization: Bearer <accessToken>`）。
+- 登出接口：`POST /auth/logout`（请求头：`Authorization: Bearer <accessToken>`，幂等；token 失效时也返回 `200`）。
+- 除 `/auth/login`、`/auth/logout`、`/health/**` 外，其余 API 均要求携带 Bearer Token。
 - 登录态持久化到 Redis（key 前缀：`gold:auth:session:`，TTL 由 `gold.auth.session-ttl` 控制）。
 - 用户管理接口 `/users/**` 仅 `ADMIN` 角色可访问。
 - 用户表结构见 `docs/app_user.sql`。

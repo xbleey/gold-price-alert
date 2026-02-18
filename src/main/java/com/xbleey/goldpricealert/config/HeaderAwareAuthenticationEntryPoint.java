@@ -18,11 +18,6 @@ public class HeaderAwareAuthenticationEntryPoint implements AuthenticationEntryP
     public void commence(HttpServletRequest request,
                          HttpServletResponse response,
                          AuthenticationException authException) throws IOException {
-        String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
-        if (authorization != null && !authorization.isBlank()) {
-            response.sendError(HttpServletResponse.SC_FORBIDDEN);
-            return;
-        }
         response.setHeader(HttpHeaders.WWW_AUTHENTICATE, BEARER_CHALLENGE);
         response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
     }

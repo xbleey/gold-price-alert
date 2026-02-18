@@ -11,15 +11,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 class HeaderAwareAuthenticationEntryPointTest {
 
     @Test
-    void shouldReturnForbiddenWhenAuthorizationHeaderPresent() throws Exception {
+    void shouldReturnUnauthorizedWhenAuthorizationHeaderPresent() throws Exception {
         HeaderAwareAuthenticationEntryPoint entryPoint = new HeaderAwareAuthenticationEntryPoint();
         MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader(HttpHeaders.AUTHORIZATION, "Basic invalid-token");
+        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer invalid-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         entryPoint.commence(request, response, new BadCredentialsException("bad credentials"));
 
-        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(response.getHeader(HttpHeaders.WWW_AUTHENTICATE))
+                .isEqualTo("Bearer realm=\"gold-price-alert\"");
     }
 
     @Test
