@@ -12,7 +12,7 @@ import java.io.IOException;
 @Component
 public class HeaderAwareAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
-    private static final String BASIC_CHALLENGE = "Basic realm=\"gold-price-alert\"";
+    private static final String BEARER_CHALLENGE = "Bearer realm=\"gold-price-alert\"";
 
     @Override
     public void commence(HttpServletRequest request,
@@ -23,7 +23,7 @@ public class HeaderAwareAuthenticationEntryPoint implements AuthenticationEntryP
             response.sendError(HttpServletResponse.SC_FORBIDDEN);
             return;
         }
-        response.setHeader(HttpHeaders.WWW_AUTHENTICATE, BASIC_CHALLENGE);
+        response.setHeader(HttpHeaders.WWW_AUTHENTICATE, BEARER_CHALLENGE);
         response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
     }
 }

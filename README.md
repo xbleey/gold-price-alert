@@ -16,8 +16,11 @@
   - 任一依赖不可用返回 `503` + `status=DOWN`。
 - `GET /health`：等价于 `GET /health/ready`，方便通用监控直接接入。
 
-## API 认证（Spring Security）
-- 所有 API 均要求认证（HTTP Basic）。
+## API 认证（Spring Security + Redis 会话）
+- 登录接口：`POST /auth/login`（JSON：`username`、`password`），成功后返回 `accessToken`（Bearer Token）。
+- 登出接口：`POST /auth/logout`（请求头：`Authorization: Bearer <accessToken>`）。
+- 除 `/auth/login` 外，其余 API 均要求携带 Bearer Token。
+- 登录态持久化到 Redis（key 前缀：`gold:auth:session:`，TTL 由 `gold.auth.session-ttl` 控制）。
 - 用户管理接口 `/users/**` 仅 `ADMIN` 角色可访问。
 - 用户表结构见 `docs/app_user.sql`。
 - 首次启动时若 `app_user` 表中不存在 `admin` 用户，系统会自动创建默认账号：

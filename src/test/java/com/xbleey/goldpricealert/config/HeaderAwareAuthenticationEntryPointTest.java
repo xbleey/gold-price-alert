@@ -32,6 +32,6 @@ class HeaderAwareAuthenticationEntryPointTest {
 
         assertThat(response.getStatus()).isEqualTo(401);
         assertThat(response.getHeader(HttpHeaders.WWW_AUTHENTICATE))
-                .isEqualTo("Basic realm=\"gold-price-alert\"");
+                .isEqualTo("Bearer realm=\"gold-price-alert\"");
     }
 }
