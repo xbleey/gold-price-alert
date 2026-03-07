@@ -335,7 +335,9 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
     }
 
     private String buildSubject(GoldAlertMessage message) {
-        return "Gold Price Alert " + resolveDirectionTag(message) + " - " + message.levelName();
+        return "Price Alert " + resolveDirectionTag(message)
+                + " - " + message.levelName()
+                + " - " + formatPrice(message == null ? null : message.latestPrice());
     }
 
     private String buildThresholdSubject(GoldThresholdAlertMessage message) {
@@ -376,7 +378,6 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         StringBuilder builder = new StringBuilder();
         ZoneId zone = clock.getZone();
         ZoneId updatedAtZone = ZoneId.of("UTC+08:00");
-        builder.append("WARNING!!WARNING!!WARNING!!").append('\n');
         builder.append("level: ").append(message.levelName()).append('\n');
         builder.append("window=").append(formatDuration(message.window())).append('\n');
         builder.append("threshold=").append(formatPercent(message.thresholdPercent())).append("%").append('\n');
@@ -393,8 +394,6 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 .append(zone.getId())
                 .append('\n')
                 .append('\n');
-        builder.append("Gold Price Chart (20m)").append('\n');
-        builder.append(buildPlainTextChart(message.recentSnapshots(), message.alertTime()));
         builder.append("Recent GoldPriceSnapshot (last ")
                 .append(message.recentSnapshots() == null ? 0 : message.recentSnapshots().size())
                 .append(")")
@@ -415,9 +414,6 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 .append(formatInstant(message == null ? null : message.alertTime(), ZoneId.of("UTC+08:00")))
                 .append('\n')
                 .append('\n');
-        builder.append("Gold Price Chart (20m)").append('\n');
-        builder.append(buildPlainTextChart(message == null ? null : message.recentSnapshots(),
-                message == null ? null : message.alertTime()));
         builder.append("Recent GoldPriceSnapshot (last ")
                 .append(message == null || message.recentSnapshots() == null ? 0 : message.recentSnapshots().size())
                 .append(")")
@@ -451,11 +447,9 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
 
     private EmailContent buildHtmlBodyContent(GoldAlertMessage message) {
         StringBuilder builder = new StringBuilder();
-        List<InlineImage> inlineImages = new ArrayList<>();
         ZoneId zone = clock.getZone();
         ZoneId updatedAtZone = ZoneId.of("UTC+08:00");
         builder.append("<html><body>");
-        builder.append("<h2>WARNING!!WARNING!!WARNING!!</h2>");
         builder.append("<h3><span style=\"color:#d32f2f;font-weight:bold;\">level: ")
                 .append(escapeHtml(message.levelName()))
                 .append("</span></h3>");
@@ -479,20 +473,16 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
                 .append(' ')
                 .append(escapeHtml(zone.getId()))
                 .append("</p>");
-        HtmlSection chartSection = buildHtmlChartSection(message.recentSnapshots(), message.alertTime(), zone);
-        builder.append(chartSection.html());
-        inlineImages.addAll(chartSection.inlineImages());
         builder.append("<h3>Recent GoldPriceSnapshot (last ")
                 .append(message.recentSnapshots() == null ? 0 : message.recentSnapshots().size())
                 .append(")</h3>");
         appendHtmlTable(builder, message.recentSnapshots(), zone, updatedAtZone);
         builder.append("</body></html>");
-        return new EmailContent(builder.toString(), inlineImages);
+        return new EmailContent(builder.toString(), List.of());
     }
 
     private EmailContent buildThresholdHtmlBodyContent(GoldThresholdAlertMessage message) {
         StringBuilder builder = new StringBuilder();
-        List<InlineImage> inlineImages = new ArrayList<>();
         ZoneId zone = clock.getZone();
         ZoneId updatedAtZone = ZoneId.of("UTC+08:00");
         builder.append("<html><body>");
@@ -509,16 +499,12 @@ public class GoldAlertEmailService implements GoldAlertNotifier {
         builder.append("<h3>time (UTC+8)=")
                 .append(escapeHtml(formatInstant(message == null ? null : message.alertTime(), ZoneId.of("UTC+08:00"))))
                 .append("</h3>");
-        HtmlSection chartSection = buildHtmlChartSection(message == null ? null : message.recentSnapshots(),
-                message == null ? null : message.alertTime(), zone);
-        builder.append(chartSection.html());
-        inlineImages.addAll(chartSection.inlineImages());
         builder.append("<h3>Recent GoldPriceSnapshot (last ")
                 .append(message == null || message.recentSnapshots() == null ? 0 : message.recentSnapshots().size())
                 .append(")</h3>");
         appendHtmlTable(builder, message == null ? null : message.recentSnapshots(), zone, updatedAtZone);
         builder.append("</body></html>");
-        return new EmailContent(builder.toString(), inlineImages);
+        return new EmailContent(builder.toString(), List.of());
     }
 
     private EmailContent buildApiErrorHtmlBodyContent(GoldApiErrorMessage message) {
