@@ -30,6 +30,19 @@ class GoldPriceHistoryTest {
     }
 
     @Test
+    void skipsSnapshotWhenPriceMatchesLatest() {
+        GoldPriceHistory history = new GoldPriceHistory(new InMemoryGoldPriceSnapshotStore());
+        Instant base = Instant.parse("2026-01-05T12:00:00Z");
+
+        GoldPriceSnapshot first = snapshot(base.minusSeconds(10), "1900.00");
+        GoldPriceSnapshot duplicate = snapshot(base, "1900.0");
+
+        assertThat(history.addIfPriceChanged(first)).isTrue();
+        assertThat(history.addIfPriceChanged(duplicate)).isFalse();
+        assertThat(history.getAll()).containsExactly(first);
+    }
+
+    @Test
     void returnsRecentSnapshotsInChronologicalOrder() {
         GoldPriceHistory history = new GoldPriceHistory(new InMemoryGoldPriceSnapshotStore());
         Instant base = Instant.parse("2026-01-05T12:00:00Z");

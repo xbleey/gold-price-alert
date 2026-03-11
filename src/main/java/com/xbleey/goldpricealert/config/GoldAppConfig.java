@@ -2,6 +2,7 @@ package com.xbleey.goldpricealert.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.xbleey.goldpricealert.service.FetchRetrySleeper;
 import okhttp3.OkHttpClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +29,11 @@ public class GoldAppConfig {
     @Bean
     public Clock clock() {
         return Clock.systemUTC();
+    }
+
+    @Bean
+    public FetchRetrySleeper fetchRetrySleeper() {
+        return Thread::sleep;
     }
 
     @Bean

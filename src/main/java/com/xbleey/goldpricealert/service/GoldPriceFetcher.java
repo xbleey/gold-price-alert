@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Clock;
 import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Month;
@@ -25,6 +26,8 @@ import java.util.Optional;
 public class GoldPriceFetcher {
 
     private static final Logger log = LoggerFactory.getLogger(GoldPriceFetcher.class);
+    private static final int MAX_FETCH_ATTEMPTS = 4;
+    private static final Duration RETRY_DELAY = Duration.ofSeconds(5);
 
     private final OkHttpClient okHttpClient;
     private final ObjectMapper objectMapper;
@@ -33,6 +36,7 @@ public class GoldPriceFetcher {
     private final GoldAlertEvaluator evaluator;
     private final GoldThresholdAlertEvaluator thresholdEvaluator;
     private final GoldApiStatusMonitor apiStatusMonitor;
+    private final FetchRetrySleeper retrySleeper;
     private final Clock clock;
 
     public GoldPriceFetcher(
@@ -43,6 +47,7 @@ public class GoldPriceFetcher {
             GoldAlertEvaluator evaluator,
             GoldThresholdAlertEvaluator thresholdEvaluator,
             GoldApiStatusMonitor apiStatusMonitor,
+            FetchRetrySleeper retrySleeper,
             Clock clock
     ) {
         this.okHttpClient = okHttpClient;
@@ -52,6 +57,7 @@ public class GoldPriceFetcher {
         this.evaluator = evaluator;
         this.thresholdEvaluator = thresholdEvaluator;
         this.apiStatusMonitor = apiStatusMonitor;
+        this.retrySleeper = retrySleeper;
         this.clock = clock;
     }
 
@@ -68,44 +74,44 @@ public class GoldPriceFetcher {
                 .url(properties.getApiUrl().toString())
                 .get()
                 .build();
-        try {
-            try (Response httpResponse = okHttpClient.newCall(request).execute()) {
-                if (!httpResponse.isSuccessful()) {
-                    String errorDetail = "HTTP status " + httpResponse.code();
-                    log.warn("Gold API returned http status {}", httpResponse.code());
-                    apiStatusMonitor.recordFailure(errorDetail);
-                    return Optional.empty();
-                }
-                if (httpResponse.body() == null) {
-                    log.warn("Gold API returned empty body");
-                    apiStatusMonitor.recordFailure("Empty response body");
-                    return Optional.empty();
-                }
-                GoldApiResponse response = objectMapper.readValue(
-                        httpResponse.body().byteStream(),
-                        GoldApiResponse.class
-                );
-                Instant fetchedAt = Instant.now(clock);
-                GoldPriceSnapshot snapshot = new GoldPriceSnapshot(fetchedAt, response);
-                history.add(snapshot);
+        String lastFailureDetail = null;
+        for (int attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt++) {
+            FetchAttemptResult result = executeFetch(request);
+            if (result.snapshot() != null) {
+                GoldPriceSnapshot snapshot = result.snapshot();
                 apiStatusMonitor.recordSuccess();
+                boolean stored = history.addIfPriceChanged(snapshot);
+                if (!stored) {
+                    log.info("Fetched gold price unchanged: {} time:{}, skip persisting", snapshot.price(), result.updatedAtFormatted());
+                    return Optional.of(snapshot);
+                }
                 boolean alerted = evaluator.evaluate(snapshot);
                 if (thresholdEvaluator != null) {
                     thresholdEvaluator.evaluate(snapshot);
                 }
-                String updatedAtFormatted = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-                        .withZone(clock.getZone())
-                        .format(response.updatedAt());
                 if (!alerted) {
-                    log.info("Fetched gold price: {} time:{}", response.price(), updatedAtFormatted);
+                    log.info("Fetched gold price: {} time:{}", snapshot.price(), result.updatedAtFormatted());
                 }
                 return Optional.of(snapshot);
             }
-        } catch (Exception ex) {
-            log.warn("Failed to fetch gold price", ex);
-            apiStatusMonitor.recordFailure(ex.getMessage());
-            return Optional.empty();
+            lastFailureDetail = result.failureDetail();
+            if (attempt == MAX_FETCH_ATTEMPTS) {
+                break;
+            }
+            log.warn(
+                    "Failed to fetch gold price on attempt {}/{}, retrying in {}s: {}",
+                    attempt,
+                    MAX_FETCH_ATTEMPTS,
+                    RETRY_DELAY.toSeconds(),
+                    lastFailureDetail
+            );
+            if (!pauseBeforeRetry(attempt)) {
+                apiStatusMonitor.recordFailure("Retry interrupted");
+                return Optional.empty();
+            }
         }
+        apiStatusMonitor.recordFailure(lastFailureDetail);
+        return Optional.empty();
     }
 
     private boolean shouldFetchNow() {
@@ -116,6 +122,44 @@ public class GoldPriceFetcher {
             return false;
         }
         return true;
+    }
+
+    private FetchAttemptResult executeFetch(Request request) {
+        try (Response httpResponse = okHttpClient.newCall(request).execute()) {
+            if (!httpResponse.isSuccessful()) {
+                String errorDetail = "HTTP status " + httpResponse.code();
+                log.warn("Gold API returned http status {}", httpResponse.code());
+                return FetchAttemptResult.failure(errorDetail);
+            }
+            if (httpResponse.body() == null) {
+                log.warn("Gold API returned empty body");
+                return FetchAttemptResult.failure("Empty response body");
+            }
+            GoldApiResponse response = objectMapper.readValue(
+                    httpResponse.body().byteStream(),
+                    GoldApiResponse.class
+            );
+            Instant fetchedAt = Instant.now(clock);
+            GoldPriceSnapshot snapshot = new GoldPriceSnapshot(fetchedAt, response);
+            String updatedAtFormatted = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                    .withZone(clock.getZone())
+                    .format(response.updatedAt());
+            return FetchAttemptResult.success(snapshot, updatedAtFormatted);
+        } catch (Exception ex) {
+            log.warn("Failed to fetch gold price", ex);
+            return FetchAttemptResult.failure(ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage());
+        }
+    }
+
+    private boolean pauseBeforeRetry(int attempt) {
+        try {
+            retrySleeper.pause(RETRY_DELAY);
+            return true;
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            log.warn("Gold price fetch retry interrupted on attempt {}", attempt, ex);
+            return false;
+        }
     }
 
     private static boolean isTradingDayUtc(LocalDate utcDate) {
@@ -173,5 +217,16 @@ public class GoldPriceFetcher {
         int month = (h + l - 7 * m + 114) / 31;
         int day = ((h + l - 7 * m + 114) % 31) + 1;
         return LocalDate.of(year, month, day);
+    }
+
+    private record FetchAttemptResult(GoldPriceSnapshot snapshot, String updatedAtFormatted, String failureDetail) {
+
+        private static FetchAttemptResult success(GoldPriceSnapshot snapshot, String updatedAtFormatted) {
+            return new FetchAttemptResult(snapshot, updatedAtFormatted, null);
+        }
+
+        private static FetchAttemptResult failure(String failureDetail) {
+            return new FetchAttemptResult(null, null, failureDetail);
+        }
     }
 }
