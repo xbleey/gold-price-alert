@@ -36,7 +36,7 @@ server:
   port: 8080
 
 gold:
-  api-url: https://api.gold-api.com/price/XAU
+  api-url: https://api.gold-api.com/price/XAU/USD
   fetch-interval: 65s
   log-dir: ${GOLD_LOG_DIR:/app/logs}
   auth:
