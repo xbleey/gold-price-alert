@@ -1,10 +1,4 @@
-FROM eclipse-temurin:21-jre
-RUN apt-get update && apt-get install -y \
-    iputils-ping \
-    dnsutils \
-    curl \
-    busybox \
-    && rm -rf /var/lib/apt/lists/*
+FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 COPY target/*.jar app.jar
 EXPOSE 8080
