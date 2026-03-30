@@ -1,5 +1,11 @@
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre
+RUN apt-get update && apt-get install -y \
+    iputils-ping \
+    dnsutils \
+    curl \
+    busybox \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY target/*.jar app.jar
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java","-Djava.net.preferIPv4Stack=true","-jar","app.jar"]
