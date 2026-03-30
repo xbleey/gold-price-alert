@@ -37,7 +37,7 @@ server:
 
 gold:
   api-url: https://api.gold-api.com/price/XAU
-  fetch-interval: 20s
+  fetch-interval: 65s
   log-dir: ${GOLD_LOG_DIR:/app/logs}
   auth:
     session-ttl: ${GOLD_AUTH_SESSION_TTL:1h}
