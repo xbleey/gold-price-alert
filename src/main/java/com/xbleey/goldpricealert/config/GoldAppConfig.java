@@ -8,8 +8,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.time.Clock;
+import java.util.concurrent.Executor;
 
 @Configuration
 public class GoldAppConfig {
@@ -43,5 +45,16 @@ public class GoldAppConfig {
         scheduler.setThreadNamePrefix("gold-alert-scheduler-");
         scheduler.initialize();
         return scheduler;
+    }
+
+    @Bean
+    public Executor aiChatStreamExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(8);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("ai-chat-stream-");
+        executor.initialize();
+        return executor;
     }
 }

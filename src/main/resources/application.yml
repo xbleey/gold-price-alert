@@ -41,6 +41,17 @@ gold:
   log-dir: ${GOLD_LOG_DIR:/app/logs}
   auth:
     session-ttl: ${GOLD_AUTH_SESSION_TTL:1h}
+  ai:
+    api-url: ${DEEPSEEK_API_URL:https://api.deepseek.com/chat/completions}
+    api-key: ${DEEPSEEK_API_KEY:}
+    model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+    thinking: ${DEEPSEEK_THINKING:disabled}
+    temperature: ${DEEPSEEK_TEMPERATURE:0.4}
+    max-tokens: ${DEEPSEEK_MAX_TOKENS:2048}
+    timeout: ${DEEPSEEK_TIMEOUT:60s}
+    max-history-messages: ${GOLD_AI_MAX_HISTORY_MESSAGES:20}
+    recent-snapshot-limit: ${GOLD_AI_RECENT_SNAPSHOT_LIMIT:5}
+    max-user-message-length: ${GOLD_AI_MAX_USER_MESSAGE_LENGTH:4000}
   alert:
     window:
       levels:
